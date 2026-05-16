@@ -44,6 +44,18 @@ struct Sticky: Codable, Identifiable, Equatable, FetchableRecord, PersistableRec
         case deletedLocally = "deleted_locally"
     }
 
+    enum SyncStatus {
+        case unprovisioned
+        case pending
+        case synced
+    }
+
+    var syncStatus: SyncStatus {
+        if googleDocId == nil { return .unprovisioned }
+        if pendingPush { return .pending }
+        return .synced
+    }
+
     static func makeNew(title: String = "", contentHTML: String = "", color: String = "yellow") -> Sticky {
         let now = Date()
         return Sticky(

@@ -25,11 +25,11 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 150, height: 80)
 
+        let viewModel = StickyViewModel(sticky: sticky, engine: engine)
+        viewModel.onRequestClose = { [weak window] in window?.close() }
         let hosting = NSHostingController(rootView: StickyContentView(
-            stickyId: sticky.id,
+            viewModel: viewModel,
             initialHTML: sticky.contentHTML,
-            colorName: sticky.color,
-            engine: engine,
             onClose: { [weak window] in window?.close() }
         ))
         window.contentViewController = hosting
