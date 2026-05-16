@@ -1,0 +1,60 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Xcode user-specific
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad/
+*.xcscmblueprint
+*.xccheckout
+
+# Xcode build output
+build/
+DerivedData/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/
+Package.pins
+# Keep Package.resolved committed for reproducible builds; uncomment to ignore:
+# Package.resolved
+
+# CocoaPods (not used, but harmless to ignore)
+Pods/
+
+# Carthage (not used)
+Carthage/Build/
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# Editors
+*.swp
+*~
+.idea/
+.vscode/
+
+# Environment & secrets
+.env
+.env.*
+*.p12
+*.mobileprovision
+*.provisionprofile
+GoogleService-Info.plist
+client_secret*.json
+
+# Logs
+*.log
