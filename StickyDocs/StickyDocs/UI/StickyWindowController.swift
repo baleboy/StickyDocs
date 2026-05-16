@@ -14,21 +14,23 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
         self.onClose = onClose
 
         let frame = NSRect(x: sticky.frameX, y: sticky.frameY, width: sticky.frameW, height: sticky.frameH)
-        let style: NSWindow.StyleMask = [.titled, .resizable, .closable, .fullSizeContentView]
-        let window = NSWindow(contentRect: frame, styleMask: style, backing: .buffered, defer: false)
+        let style: NSWindow.StyleMask = [.borderless, .resizable]
+        let window = StickyKeyableWindow(contentRect: frame, styleMask: style, backing: .buffered, defer: false)
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .stationary]
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = true
         window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
-        window.backgroundColor = StickyColor.background(for: sticky.color)
         window.minSize = NSSize(width: 150, height: 80)
 
         let hosting = NSHostingController(rootView: StickyContentView(
             stickyId: sticky.id,
             initialHTML: sticky.contentHTML,
-            engine: engine
+            colorName: sticky.color,
+            engine: engine,
+            onClose: { [weak window] in window?.close() }
         ))
         window.contentViewController = hosting
 
@@ -62,6 +64,14 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
             }
         }
     }
+}
+
+// A borderless NSWindow that still accepts keyboard input. The default
+// NSWindow returns false from canBecomeKeyWindow when borderless, which
+// prevents the embedded NSTextView from receiving keystrokes.
+final class StickyKeyableWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
 }
 
 enum StickyColor {

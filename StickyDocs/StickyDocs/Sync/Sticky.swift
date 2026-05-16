@@ -54,7 +54,7 @@ struct Sticky: Codable, Identifiable, Equatable, FetchableRecord, PersistableRec
             lastSyncedHTML: nil,
             conflictBackupHTML: nil,
             lastRevisionId: nil,
-            frameX: 100, frameY: 100, frameW: 220, frameH: 220,
+            frameX: 100, frameY: 100, frameW: 280, frameH: 260,
             color: color,
             collapsed: false,
             createdAt: now,
