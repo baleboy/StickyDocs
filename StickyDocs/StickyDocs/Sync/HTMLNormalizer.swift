@@ -56,28 +56,38 @@ enum HTMLNormalizer {
     private enum ListKind { case none, bullet, number }
 
     private static func listKind(of paragraph: NSAttributedString) -> ListKind {
-        guard paragraph.length > 0,
-              let style = paragraph.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle,
-              let innermost = style.textLists.last
-        else { return .none }
-        let format = innermost.markerFormat.rawValue.lowercased()
-        if format.contains("decimal") || format.contains("1") {
-            return .number
+        guard paragraph.length > 0 else { return .none }
+        // Custom attribute set during tagging from raw HTML scan; authoritative.
+        var ordered = false
+        paragraph.enumerateAttribute(orderedKey, in: NSRange(location: 0, length: paragraph.length)) { value, _, stop in
+            if (value as? Bool) == true { ordered = true; stop.pointee = true }
         }
-        return .bullet
+        var hasList = false
+        paragraph.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: paragraph.length)) { value, _, stop in
+            if let style = value as? NSParagraphStyle, !style.textLists.isEmpty {
+                hasList = true
+                stop.pointee = true
+            }
+        }
+        guard hasList else { return .none }
+        return ordered ? .number : .bullet
     }
 
     // Apple's HTML parser includes the rendered list marker (e.g. "\t•\t" or
     // "\t1.\t") as plain text inside each list-item paragraph. We must strip it
     // before serializing, otherwise the next parse would render the marker
     // again on top of the literal text, doubling it.
+    //
+    // Google's HTML export uses CSS counters and does not include the marker
+    // in the text, but does add leading whitespace for indentation. So the
+    // marker char is optional in the regex - the whitespace alone matches.
     private static func trimLeadingMarker(_ paragraph: NSAttributedString, kind: ListKind) -> NSAttributedString {
         let pattern: String
         switch kind {
         case .bullet:
-            pattern = #"^\s*[•·▪◦◯●○■□*-]\s*"#
+            pattern = #"^\s*([•·▪◦◯●○■□*-]\s*)?"#
         case .number:
-            pattern = #"^\s*\d+[.)]?\s*"#
+            pattern = #"^\s*(\d+[.)]?\s*)?"#
         case .none:
             return paragraph
         }
@@ -132,6 +142,33 @@ enum HTMLNormalizer {
 
     // MARK: - HTML -> canonical NSAttributedString
 
+    // NSAttributedString's HTML parser loses the <ol>-vs-<ul> distinction when
+    // the source uses CSS counters (as Google Drive's export does). We pre-scan
+    // the raw HTML for <ol>/<ul>/<li> structure, then tag list-item paragraphs
+    // with this custom attribute after canonicalization.
+    static let orderedKey = NSAttributedString.Key("com.balenet.StickyDocs.ordered")
+
+    private static func scanListItemOrderedFlags(_ html: String) -> [Bool] {
+        var stack: [Bool] = []
+        var flags: [Bool] = []
+        guard let regex = try? NSRegularExpression(pattern: #"<(/?)(ol|ul|li)[^>]*>"#, options: [.caseInsensitive]) else {
+            return flags
+        }
+        let ns = html as NSString
+        for match in regex.matches(in: html, range: NSRange(location: 0, length: ns.length)) {
+            let isClose = ns.substring(with: match.range(at: 1)) == "/"
+            let tag = ns.substring(with: match.range(at: 2)).lowercased()
+            switch (tag, isClose) {
+            case ("ol", false): stack.append(true)
+            case ("ul", false): stack.append(false)
+            case ("ol", true), ("ul", true): _ = stack.popLast()
+            case ("li", false): flags.append(stack.last ?? false)
+            default: break
+            }
+        }
+        return flags
+    }
+
     @MainActor
     static func attributedString(from html: String) -> NSAttributedString {
         guard !html.isEmpty, let data = html.data(using: .utf8) else {
@@ -144,15 +181,48 @@ enum HTMLNormalizer {
         guard let raw = try? NSAttributedString(data: data, options: options, documentAttributes: nil) else {
             return NSAttributedString(string: "")
         }
-        return canonicalize(raw)
+        let canonical = canonicalize(raw)
+        let flags = scanListItemOrderedFlags(html)
+        return tagOrderedListItems(canonical, orderedFlags: flags)
+    }
+
+    // Walk paragraphs of the canonical attributed string. For each paragraph
+    // that is a list item (has textLists set in its paragraphStyle), consume
+    // the next ordered flag and stamp the paragraph with `orderedKey` if true.
+    private static func tagOrderedListItems(_ attr: NSAttributedString, orderedFlags: [Bool]) -> NSAttributedString {
+        guard !orderedFlags.isEmpty else { return attr }
+        let mutable = NSMutableAttributedString(attributedString: attr)
+        let ns = mutable.string as NSString
+        var flagIdx = 0
+        ns.enumerateSubstrings(in: NSRange(location: 0, length: ns.length), options: .byParagraphs) { _, paragraphRange, _, _ in
+            // Determine whether this paragraph has textLists set anywhere.
+            var hasList = false
+            mutable.enumerateAttribute(.paragraphStyle, in: paragraphRange) { value, _, stop in
+                if let style = value as? NSParagraphStyle, !style.textLists.isEmpty {
+                    hasList = true
+                    stop.pointee = true
+                }
+            }
+            guard hasList else { return }
+            guard flagIdx < orderedFlags.count else { return }
+            let ordered = orderedFlags[flagIdx]
+            flagIdx += 1
+            if ordered {
+                mutable.addAttribute(orderedKey, value: true, range: paragraphRange)
+            }
+        }
+        return mutable
     }
 
     private static func canonicalize(_ raw: NSAttributedString) -> NSAttributedString {
         let baseFont = NSFont.systemFont(ofSize: NSFont.systemFontSize)
         let result = NSMutableAttributedString()
         raw.enumerateAttributes(in: NSRange(location: 0, length: raw.length)) { attrs, range, _ in
-            let text = (raw.string as NSString).substring(with: range)
+            var text = (raw.string as NSString).substring(with: range)
             guard !text.isEmpty else { return }
+            // Google's HTML export uses non-breaking spaces (U+00A0) adjacent to
+            // styled inline tags. Normalize to regular space so round-trip matches.
+            text = text.replacingOccurrences(of: "\u{00A0}", with: " ")
 
             var traits: NSFontDescriptor.SymbolicTraits = []
             if let font = attrs[.font] as? NSFont {

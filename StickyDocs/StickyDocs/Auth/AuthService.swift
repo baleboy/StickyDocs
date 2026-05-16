@@ -116,7 +116,7 @@ final class AuthService {
         )
     }
 
-    private func refresh(using refreshToken: String) async throws -> OAuthTokens {
+    func refresh(using refreshToken: String) async throws -> OAuthTokens {
         var body = URLComponents()
         body.queryItems = [
             .init(name: "client_id", value: Secrets.googleClientID),
