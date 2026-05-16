@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		25B4E4022FB89000001D471A /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 25B4E4012FB89000001D471A /* GRDB */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		25B4E3BA2FB869D5001D471A /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +56,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				25B4E4022FB89000001D471A /* GRDB in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -78,6 +83,7 @@
 				25B4E3AE2FB869D3001D471A /* StickyDocs */,
 				25B4E3BC2FB869D5001D471A /* StickyDocsTests */,
 				25B4E3C62FB869D5001D471A /* StickyDocsUITests */,
+				25B4E4002FB89000001D471A /* Frameworks */,
 				25B4E3AD2FB869D3001D471A /* Products */,
 			);
 			sourceTree = "<group>";
@@ -90,6 +96,13 @@
 				25B4E3C32FB869D5001D471A /* StickyDocsUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		25B4E4002FB89000001D471A /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -112,6 +125,7 @@
 			);
 			name = StickyDocs;
 			packageProductDependencies = (
+				25B4E4012FB89000001D471A /* GRDB */,
 			);
 			productName = StickyDocs;
 			productReference = 25B4E3AC2FB869D3001D471A /* StickyDocs.app */;
@@ -618,6 +632,14 @@
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		25B4E4012FB89000001D471A /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 25B4E3D72FB86BB9001D471A /* XCRemoteSwiftPackageReference "GRDB" */;
+			productName = GRDB;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 25B4E3A42FB869D3001D471A /* Project object */;
 }
