@@ -23,6 +23,10 @@ final class AllStickiesViewModel: ObservableObject {
             }
         )
     }
+
+    deinit {
+        cancellable?.cancel()
+    }
 }
 
 struct AllStickiesView: View {

@@ -82,6 +82,18 @@ struct GoogleDriveClient {
         return try JSONDecoder().decode(CreateResponse.self, from: createData).id
     }
 
+    func isTrashed(docId: String) async throws -> Bool {
+        let token = try await accessToken()
+        var comps = URLComponents(string: "https://www.googleapis.com/drive/v3/files/\(docId)")!
+        comps.queryItems = [.init(name: "fields", value: "trashed")]
+        var req = URLRequest(url: comps.url!)
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: req)
+        try Self.assertOK(response: response, data: data)
+        struct Resp: Decodable { let trashed: Bool }
+        return try JSONDecoder().decode(Resp.self, from: data).trashed
+    }
+
     func exportAsHTML(docId: String) async throws -> String {
         let token = try await accessToken()
         var comps = URLComponents(string: "https://www.googleapis.com/drive/v3/files/\(docId)/export")!

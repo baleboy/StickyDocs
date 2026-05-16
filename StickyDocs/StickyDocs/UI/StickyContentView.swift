@@ -53,12 +53,16 @@ struct StickyContentView: View {
                 }
             }
             Divider()
-            Button("Sync now") { viewModel.syncNow() }
-                .disabled(viewModel.sticky.googleDocId == nil)
-            Button("Open in Google Docs") { viewModel.openInDocs() }
-                .disabled(viewModel.sticky.googleDocId == nil)
-            Button("Copy Doc link") { viewModel.copyDocLink() }
-                .disabled(viewModel.sticky.googleDocId == nil)
+            if viewModel.sticky.syncStatus == .unlinked {
+                Button("Re-create Doc in Drive") { viewModel.recreateDoc() }
+            } else {
+                Button("Sync now") { viewModel.syncNow() }
+                    .disabled(viewModel.sticky.googleDocId == nil)
+                Button("Open in Google Docs") { viewModel.openInDocs() }
+                    .disabled(viewModel.sticky.googleDocId == nil)
+                Button("Copy Doc link") { viewModel.copyDocLink() }
+                    .disabled(viewModel.sticky.googleDocId == nil)
+            }
             Divider()
             Button("Delete sticky", role: .destructive) { viewModel.delete() }
         }

@@ -48,9 +48,12 @@ struct Sticky: Codable, Identifiable, Equatable, FetchableRecord, PersistableRec
         case unprovisioned
         case pending
         case synced
+        case unlinked   // had a Doc, but it was deleted in Drive
     }
 
     var syncStatus: SyncStatus {
+        // Previously synced but the Doc is gone from Drive.
+        if googleDocId == nil && lastSyncedAt != nil { return .unlinked }
         // Empty new sticky with nothing to push: treat as synced (no dot).
         if googleDocId == nil && !pendingPush { return .synced }
         if pendingPush { return .pending }

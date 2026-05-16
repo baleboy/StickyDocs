@@ -23,6 +23,7 @@ final class SyncEngine {
         var pushBody: (_ docId: String, _ content: NSAttributedString) async throws -> Void
         var deleteDoc: (_ docId: String) async throws -> Void
         var ensureStickiesFolder: () async throws -> Void = {}
+        var isTrashed: (_ docId: String) async throws -> Bool = { _ in false }
     }
 
     let store: StickyStore
@@ -94,20 +95,60 @@ final class SyncEngine {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !plain.isEmpty else { return }
 
+        // If the sticky has never been synced and has no doc, provision one.
+        // But if it was previously synced and is now unlinked (Doc deleted in
+        // Drive), don't auto-recreate - wait for an explicit user action.
         if sticky.googleDocId == nil {
+            if sticky.lastSyncedAt != nil { return }   // unlinked, hold
             try await provisionDocIfNeeded(stickyId: stickyId, fallbackTitle: "")
             guard let refreshed = try store.fetch(id: stickyId) else { return }
             sticky = refreshed
         }
         guard let docId = sticky.googleDocId else { return }
 
+        // Trashed Docs still accept writes via the API but are invisible to the
+        // user in Drive. Detect this before pushing so we don't pollute trash
+        // with new edits the user can't see.
+        if (try? await deps.isTrashed(docId)) == true {
+            try markUnlinked(&sticky)
+            return
+        }
+
         let attributed = HTMLNormalizer.attributedString(from: sticky.contentHTML)
-        try await deps.pushBody(docId, attributed)
+        do {
+            try await deps.pushBody(docId, attributed)
+            sticky.lastRevisionId = try await deps.fetchRevisionId(docId)
+        } catch let error as NSError where Self.isMissingDocError(error) {
+            try markUnlinked(&sticky)
+            return
+        }
         sticky.lastSyncedHTML = sticky.contentHTML
-        sticky.lastRevisionId = try await deps.fetchRevisionId(docId)
         sticky.lastSyncedAt = Date()
         sticky.pendingPush = false
         try store.upsert(sticky)
+    }
+
+    private static func isMissingDocError(_ error: NSError) -> Bool {
+        error.code == 404 || error.code == 410
+    }
+
+    private func markUnlinked(_ sticky: inout Sticky) throws {
+        sticky.googleDocId = nil
+        sticky.lastRevisionId = nil
+        sticky.pendingPush = false
+        sticky.updatedAt = Date()
+        try store.upsert(sticky)
+    }
+
+    // User-initiated recovery from an unlinked state: forces a fresh Doc
+    // to be provisioned with current content.
+    func recreateDoc(stickyId: String) async throws {
+        guard var sticky = try store.fetch(id: stickyId) else { return }
+        sticky.lastSyncedAt = nil   // clear the "was-ever-synced" sentinel so push will provision
+        sticky.lastSyncedHTML = nil
+        sticky.pendingPush = true
+        try store.upsert(sticky)
+        try await push(stickyId: stickyId)
     }
 
     enum PullOutcome: Equatable {
@@ -120,7 +161,13 @@ final class SyncEngine {
         guard var sticky = try store.fetch(id: stickyId),
               let docId = sticky.googleDocId else { return .unchanged }
 
-        let remoteRevisionId = try await deps.fetchRevisionId(docId)
+        let remoteRevisionId: String?
+        do {
+            remoteRevisionId = try await deps.fetchRevisionId(docId)
+        } catch let error as NSError where Self.isMissingDocError(error) {
+            try markUnlinked(&sticky)
+            return .unchanged
+        }
         if let remote = remoteRevisionId, remote == sticky.lastRevisionId {
             return .unchanged
         }

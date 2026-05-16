@@ -2,6 +2,7 @@ import Foundation
 import AppKit
 import SwiftUI
 import Combine
+import GRDB
 
 @MainActor
 final class StickyViewModel: ObservableObject {
@@ -9,10 +10,28 @@ final class StickyViewModel: ObservableObject {
     let engine: SyncEngine
     var onRequestClose: (() -> Void)?
 
+    private var cancellable: AnyDatabaseCancellable?
+
     init(sticky: Sticky, engine: SyncEngine) {
         self.sticky = sticky
         self.engine = engine
+
+        let id = sticky.id
+        let observation = ValueObservation.tracking { db in
+            try Sticky.filter(Sticky.CodingKeys.id == id).fetchOne(db)
+        }
+        cancellable = observation.start(
+            in: engine.store.dbQueue,
+            onError: { _ in },
+            onChange: { [weak self] row in
+                Task { @MainActor [weak self] in
+                    if let row { self?.sticky = row }
+                }
+            }
+        )
     }
+
+    deinit { cancellable?.cancel() }
 
     func reload() {
         if let updated = try? engine.store.fetch(id: sticky.id) {
@@ -52,6 +71,13 @@ final class StickyViewModel: ObservableObject {
             onRequestClose?()
         }
     }
+
+    func recreateDoc() {
+        Task {
+            try? await engine.recreateDoc(stickyId: sticky.id)
+            reload()
+        }
+    }
 }
 
 extension Sticky.SyncStatus {
@@ -60,6 +86,7 @@ extension Sticky.SyncStatus {
         case .unprovisioned: return Color.gray
         case .pending: return Color.orange
         case .synced: return Color.green
+        case .unlinked: return Color.red
         }
     }
 
@@ -68,6 +95,7 @@ extension Sticky.SyncStatus {
         case .unprovisioned: return "Provisioning Doc..."
         case .pending: return "Pending sync"
         case .synced: return "Synced"
+        case .unlinked: return "Doc was deleted in Drive"
         }
     }
 }

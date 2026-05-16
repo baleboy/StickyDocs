@@ -30,7 +30,8 @@ final class AppController {
             fetchRevisionId: { try await docsClient.fetchRevisionId(docId: $0) },
             pushBody: { docId, content in try await docsClient.replaceDocumentBody(docId: docId, with: content) },
             deleteDoc: { try await driveClient.deleteFile(id: $0) },
-            ensureStickiesFolder: { _ = try await folderIdCache.id() }
+            ensureStickiesFolder: { _ = try await folderIdCache.id() },
+            isTrashed: { try await driveClient.isTrashed(docId: $0) }
         )
         self.engine = SyncEngine(store: store, deps: deps)
     }
