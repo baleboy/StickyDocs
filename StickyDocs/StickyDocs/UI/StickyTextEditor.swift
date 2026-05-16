@@ -1,13 +1,90 @@
 import SwiftUI
 import AppKit
 
+final class StickyNSTextView: NSTextView {
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command else {
+            return super.performKeyEquivalent(with: event)
+        }
+        switch event.charactersIgnoringModifiers {
+        case "b": applyTrait(.boldFontMask); return true
+        case "i": applyTrait(.italicFontMask); return true
+        case "u": toggleUnderline(); return true
+        default: return super.performKeyEquivalent(with: event)
+        }
+    }
+
+    private func applyTrait(_ trait: NSFontTraitMask) {
+        let range = selectedRange()
+        let fm = NSFontManager.shared
+
+        func toggled(_ font: NSFont) -> NSFont {
+            let has = fm.traits(of: font).contains(trait)
+            return has ? fm.convert(font, toNotHaveTrait: trait) : fm.convert(font, toHaveTrait: trait)
+        }
+
+        if range.length == 0 {
+            var attrs = typingAttributes
+            let font = (attrs[.font] as? NSFont) ?? NSFont.systemFont(ofSize: 14)
+            attrs[.font] = toggled(font)
+            typingAttributes = attrs
+            return
+        }
+
+        guard let storage = textStorage else { return }
+        storage.beginEditing()
+        storage.enumerateAttribute(.font, in: range, options: []) { value, subrange, _ in
+            let font = (value as? NSFont) ?? NSFont.systemFont(ofSize: 14)
+            storage.addAttribute(.font, value: toggled(font), range: subrange)
+        }
+        storage.endEditing()
+        didChangeText()
+    }
+
+    private func toggleUnderline() {
+        let range = selectedRange()
+        if range.length == 0 {
+            var attrs = typingAttributes
+            let current = (attrs[.underlineStyle] as? Int) ?? 0
+            attrs[.underlineStyle] = current == 0 ? NSUnderlineStyle.single.rawValue : 0
+            typingAttributes = attrs
+            return
+        }
+        guard let storage = textStorage else { return }
+        let current = storage.attribute(.underlineStyle, at: range.location, effectiveRange: nil) as? Int ?? 0
+        let newValue: Int = current == 0 ? NSUnderlineStyle.single.rawValue : 0
+        storage.beginEditing()
+        storage.addAttribute(.underlineStyle, value: newValue, range: range)
+        storage.endEditing()
+        didChangeText()
+    }
+}
+
 struct StickyTextEditor: NSViewRepresentable {
     let initialHTML: String
     let onChange: (NSAttributedString) -> Void
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSTextView.scrollableTextView()
-        guard let textView = scrollView.documentView as? NSTextView else { return scrollView }
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.borderType = .noBorder
+
+        let contentSize = scrollView.contentSize
+        let layoutManager = NSLayoutManager()
+        let textContainer = NSTextContainer(containerSize: NSSize(width: contentSize.width, height: CGFloat.greatestFiniteMagnitude))
+        textContainer.widthTracksTextView = true
+        layoutManager.addTextContainer(textContainer)
+        let storage = NSTextStorage()
+        storage.addLayoutManager(layoutManager)
+
+        let textView = StickyNSTextView(frame: .zero, textContainer: textContainer)
+        textView.minSize = NSSize(width: 0, height: 0)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        scrollView.documentView = textView
 
         textView.isRichText = true
         textView.allowsUndo = true

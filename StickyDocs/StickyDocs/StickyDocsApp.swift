@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 @main
 struct StickyDocsApp: App {
@@ -12,6 +13,22 @@ struct StickyDocsApp: App {
         WindowGroup {
             ContentView()
                 .task { try? AppController.shared.restoreOpenStickies() }
+        }
+        .commands {
+            CommandMenu("Format") {
+                Button("Bold") {
+                    NSApp.sendAction(Selector(("toggleBold:")), to: nil, from: nil)
+                }
+                .keyboardShortcut("b", modifiers: .command)
+                Button("Italic") {
+                    NSApp.sendAction(Selector(("toggleItalic:")), to: nil, from: nil)
+                }
+                .keyboardShortcut("i", modifiers: .command)
+                Button("Underline") {
+                    NSApp.sendAction(Selector(("toggleUnderline:")), to: nil, from: nil)
+                }
+                .keyboardShortcut("u", modifiers: .command)
+            }
         }
     }
 }
