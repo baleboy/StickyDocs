@@ -10,6 +10,10 @@ struct StickyDocsApp: App {
     }
 
     var body: some Scene {
+        MenuBarExtra("StickyDocs", systemImage: "note.text") {
+            MenuBarContent()
+        }
+
         WindowGroup {
             ContentView()
                 .task { try? AppController.shared.restoreOpenStickies() }

@@ -1,8 +1,10 @@
 import Foundation
 import AppKit
+import Combine
 
 @MainActor
-final class AuthService {
+final class AuthService: ObservableObject {
+    @Published private(set) var isSignedIn: Bool = false
     enum AuthError: Error, LocalizedError {
         case stateMismatch
         case noAuthCode(String)
@@ -29,6 +31,14 @@ final class AuthService {
 
     private var cachedTokens: OAuthTokens?
 
+    private init() {
+        refreshSignedInState()
+    }
+
+    private func refreshSignedInState() {
+        isSignedIn = (try? currentTokens()) != nil
+    }
+
     func currentTokens() throws -> OAuthTokens? {
         if let cachedTokens { return cachedTokens }
         guard let data = try keychain.load() else { return nil }
@@ -49,6 +59,7 @@ final class AuthService {
     func signOut() throws {
         cachedTokens = nil
         try keychain.delete()
+        isSignedIn = false
     }
 
     func signIn() async throws -> OAuthTokens {
@@ -146,6 +157,7 @@ final class AuthService {
         cachedTokens = tokens
         let data = try JSONEncoder().encode(tokens)
         try keychain.save(data)
+        isSignedIn = true
     }
 
     private struct TokenResponse: Decodable {

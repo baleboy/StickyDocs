@@ -2,13 +2,17 @@ import SwiftUI
 import AppKit
 
 struct ContentView: View {
-    @State private var status: String = "Not signed in"
+    @ObservedObject private var auth = AuthService.shared
+    @State private var status: String = ""
     @State private var files: [GoogleDriveClient.DriveFile] = []
     @State private var isWorking = false
     @State private var roundTripResults: [RoundTripHarness.CaseResult] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            Text(auth.isSignedIn ? "Signed in." : "Not signed in.")
+                .font(.subheadline)
+                .foregroundStyle(auth.isSignedIn ? .green : .secondary)
             Text("StickyDocs — Auth & Round-Trip Harness")
                 .font(.headline)
 

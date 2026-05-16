@@ -56,6 +56,22 @@ final class AppController {
             showWindow(for: sticky)
         }
     }
+
+    func syncAllPending() async {
+        let pending = (try? store.pendingPushes()) ?? []
+        for sticky in pending {
+            try? await engine.push(stickyId: sticky.id)
+        }
+    }
+
+    func openStickiesFolderInBrowser() {
+        let id = (try? store.getAppState(key: "stickies_folder_id")) ?? nil
+        if let id, let url = URL(string: "https://drive.google.com/drive/folders/\(id)") {
+            NSWorkspace.shared.open(url)
+        } else if let url = URL(string: "https://drive.google.com/") {
+            NSWorkspace.shared.open(url)
+        }
+    }
 }
 
 @MainActor
