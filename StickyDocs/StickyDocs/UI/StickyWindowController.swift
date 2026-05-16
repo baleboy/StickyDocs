@@ -41,7 +41,12 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
     required init?(coder: NSCoder) { fatalError() }
 
     func windowWillClose(_ notification: Notification) {
+        flushPendingPush()
         onClose(stickyId)
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        flushPendingPush()
     }
 
     func windowDidResize(_ notification: Notification) {
@@ -50,6 +55,16 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
 
     func windowDidMove(_ notification: Notification) {
         persistFrame()
+    }
+
+    private func flushPendingPush() {
+        let id = stickyId
+        let engine = engine
+        Task { @MainActor in
+            guard let sticky = try? engine.store.fetch(id: id),
+                  sticky.pendingPush, sticky.googleDocId != nil else { return }
+            try? await engine.push(stickyId: id)
+        }
     }
 
     private func persistFrame() {
