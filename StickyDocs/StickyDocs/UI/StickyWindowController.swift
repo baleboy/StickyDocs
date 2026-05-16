@@ -61,8 +61,7 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
         let id = stickyId
         let engine = engine
         Task { @MainActor in
-            guard let sticky = try? engine.store.fetch(id: id),
-                  sticky.pendingPush, sticky.googleDocId != nil else { return }
+            guard let sticky = try? engine.store.fetch(id: id), sticky.pendingPush else { return }
             try? await engine.push(stickyId: id)
         }
     }

@@ -36,9 +36,6 @@ final class AppController {
     func newSticky() throws -> Sticky {
         let sticky = try engine.createLocalSticky()
         showWindow(for: sticky)
-        Task { [engine] in
-            try? await engine.provisionDocIfNeeded(stickyId: sticky.id)
-        }
         return sticky
     }
 

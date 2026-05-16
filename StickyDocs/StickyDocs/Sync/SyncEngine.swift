@@ -35,31 +35,47 @@ final class SyncEngine {
 
     // MARK: - Operations
 
-    // Creates a Sticky locally without touching the network. The Doc is
-    // provisioned lazily by provisionDocIfNeeded so the window can appear
-    // instantly. Until provisioning succeeds, googleDocId is nil and any
-    // local edits accumulate in pending_push.
-    func createLocalSticky(title: String = "Untitled sticky") throws -> Sticky {
-        var sticky = Sticky.makeNew(title: title)
-        sticky.pendingPush = true
+    // Creates a Sticky locally without touching the network or creating a
+    // Drive Doc. The Doc is provisioned on first push - if the sticky never
+    // gets any content, no Doc is ever created (keeps Drive tidy).
+    func createLocalSticky(title: String = "") throws -> Sticky {
+        let sticky = Sticky.makeNew(title: title)
         try store.upsert(sticky)
         return sticky
     }
 
-    func provisionDocIfNeeded(stickyId: String) async throws {
+    // Convenience for tests / scripted flows: creates local + provisions Doc
+    // with the given title even if there's no content yet.
+    func createSticky(title: String = "Untitled sticky") async throws -> Sticky {
+        let sticky = try createLocalSticky(title: title)
+        try await provisionDocIfNeeded(stickyId: sticky.id, fallbackTitle: title)
+        return try store.fetch(id: sticky.id) ?? sticky
+    }
+
+    @MainActor
+    private func provisionDocIfNeeded(stickyId: String, fallbackTitle: String) async throws {
         guard var sticky = try store.fetch(id: stickyId), sticky.googleDocId == nil else { return }
         try await deps.ensureStickiesFolder()
-        let docId = try await deps.createDoc(sticky.title.isEmpty ? "Untitled sticky" : sticky.title)
+        let title = Self.titleForFirstSync(from: sticky.contentHTML, fallback: fallbackTitle)
+        let docId = try await deps.createDoc(title)
         sticky.googleDocId = docId
+        sticky.title = title
         sticky.lastRevisionId = try await deps.fetchRevisionId(docId)
         try store.upsert(sticky)
     }
 
-    // Convenience for tests / scripted flows: creates local + provisions Doc.
-    func createSticky(title: String = "Untitled sticky") async throws -> Sticky {
-        let sticky = try createLocalSticky(title: title)
-        try await provisionDocIfNeeded(stickyId: sticky.id)
-        return try store.fetch(id: sticky.id) ?? sticky
+    @MainActor
+    private static func titleForFirstSync(from contentHTML: String, fallback: String) -> String {
+        let plain = HTMLNormalizer.attributedString(from: contentHTML).string
+        let firstLine = plain.components(separatedBy: .newlines).first ?? ""
+        let trimmed = firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty && trimmed.count <= 50 {
+            return trimmed
+        }
+        if !fallback.isEmpty { return fallback }
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm"
+        return "Sticky \(f.string(from: Date()))"
     }
 
     func updateContent(stickyId: String, html: String) throws {
@@ -71,8 +87,20 @@ final class SyncEngine {
     }
 
     func push(stickyId: String) async throws {
-        guard var sticky = try store.fetch(id: stickyId),
-              let docId = sticky.googleDocId else { return }
+        guard var sticky = try store.fetch(id: stickyId) else { return }
+        // Skip stickies that have no real content yet - don't create a Doc
+        // just for an empty note the user might still discard.
+        let plain = HTMLNormalizer.attributedString(from: sticky.contentHTML).string
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !plain.isEmpty else { return }
+
+        if sticky.googleDocId == nil {
+            try await provisionDocIfNeeded(stickyId: stickyId, fallbackTitle: "")
+            guard let refreshed = try store.fetch(id: stickyId) else { return }
+            sticky = refreshed
+        }
+        guard let docId = sticky.googleDocId else { return }
+
         let attributed = HTMLNormalizer.attributedString(from: sticky.contentHTML)
         try await deps.pushBody(docId, attributed)
         sticky.lastSyncedHTML = sticky.contentHTML

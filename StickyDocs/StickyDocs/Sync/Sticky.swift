@@ -51,7 +51,8 @@ struct Sticky: Codable, Identifiable, Equatable, FetchableRecord, PersistableRec
     }
 
     var syncStatus: SyncStatus {
-        if googleDocId == nil { return .unprovisioned }
+        // Empty new sticky with nothing to push: treat as synced (no dot).
+        if googleDocId == nil && !pendingPush { return .synced }
         if pendingPush { return .pending }
         return .synced
     }
