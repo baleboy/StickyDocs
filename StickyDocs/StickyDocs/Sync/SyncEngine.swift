@@ -34,13 +34,30 @@ final class SyncEngine {
 
     // MARK: - Operations
 
-    func createSticky(title: String = "Untitled sticky") async throws -> Sticky {
+    // Creates a Sticky locally without touching the network. The Doc is
+    // provisioned lazily by provisionDocIfNeeded so the window can appear
+    // instantly. Until provisioning succeeds, googleDocId is nil and any
+    // local edits accumulate in pending_push.
+    func createLocalSticky(title: String = "Untitled sticky") throws -> Sticky {
         var sticky = Sticky.makeNew(title: title)
-        let docId = try await deps.createDoc(title)
+        sticky.pendingPush = true
+        try store.upsert(sticky)
+        return sticky
+    }
+
+    func provisionDocIfNeeded(stickyId: String) async throws {
+        guard var sticky = try store.fetch(id: stickyId), sticky.googleDocId == nil else { return }
+        let docId = try await deps.createDoc(sticky.title.isEmpty ? "Untitled sticky" : sticky.title)
         sticky.googleDocId = docId
         sticky.lastRevisionId = try await deps.fetchRevisionId(docId)
         try store.upsert(sticky)
-        return sticky
+    }
+
+    // Convenience for tests / scripted flows: creates local + provisions Doc.
+    func createSticky(title: String = "Untitled sticky") async throws -> Sticky {
+        let sticky = try createLocalSticky(title: title)
+        try await provisionDocIfNeeded(stickyId: sticky.id)
+        return try store.fetch(id: sticky.id) ?? sticky
     }
 
     func updateContent(stickyId: String, html: String) throws {

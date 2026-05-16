@@ -29,6 +29,11 @@ struct ContentView: View {
                     .disabled(isWorking)
                 if isWorking { ProgressView().controlSize(.small) }
             }
+            HStack {
+                Button("New Sticky") { Task { await newSticky() } }
+                    .disabled(isWorking)
+                Button("Restore Open Stickies") { restoreStickies() }
+            }
 
             Text(status)
                 .font(.callout)
@@ -152,6 +157,24 @@ struct ContentView: View {
             status = "Saved refresh token to \(file.path) - tests can now run via xcodebuild test."
         } catch {
             status = "Save failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func newSticky() async {
+        do {
+            _ = try AppController.shared.newSticky()
+            status = "Sticky created. Doc provisioning in background."
+        } catch {
+            status = "Create sticky failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func restoreStickies() {
+        do {
+            try AppController.shared.restoreOpenStickies()
+            status = "Restored open stickies."
+        } catch {
+            status = "Restore failed: \(error.localizedDescription)"
         }
     }
 

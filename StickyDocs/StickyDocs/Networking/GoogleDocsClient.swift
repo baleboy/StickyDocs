@@ -6,6 +6,18 @@ import AppKit
 struct GoogleDocsClient {
     let accessToken: () async throws -> String
 
+    func fetchRevisionId(docId: String) async throws -> String {
+        let token = try await accessToken()
+        var comps = URLComponents(string: "https://docs.googleapis.com/v1/documents/\(docId)")!
+        comps.queryItems = [.init(name: "fields", value: "revisionId")]
+        var req = URLRequest(url: comps.url!)
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: req)
+        try Self.assertOK(response: response, data: data)
+        struct Resp: Decodable { let revisionId: String }
+        return try JSONDecoder().decode(Resp.self, from: data).revisionId
+    }
+
     func replaceDocumentBody(docId: String, with attributed: NSAttributedString) async throws {
         let endIndex = try await fetchBodyEndIndex(docId: docId)
         let encoded = await DocsBatchEncoder.encode(attributed, currentBodyEndIndex: endIndex)
