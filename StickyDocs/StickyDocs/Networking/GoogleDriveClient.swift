@@ -27,24 +27,59 @@ struct GoogleDriveClient {
         return try JSONDecoder().decode(ListResponse.self, from: data).files
     }
 
-    func createDoc(title: String) async throws -> String {
+    func createDoc(title: String, parentFolderId: String? = nil) async throws -> String {
         let token = try await accessToken()
         var req = URLRequest(url: URL(string: "https://www.googleapis.com/drive/v3/files")!)
         req.httpMethod = "POST"
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "name": title,
             "mimeType": "application/vnd.google-apps.document",
             "appProperties": ["stickydocs": "v1"]
         ]
+        if let parentFolderId { body["parents"] = [parentFolderId] }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: req)
         try Self.assertOK(response: response, data: data)
         struct CreateResponse: Decodable { let id: String }
         return try JSONDecoder().decode(CreateResponse.self, from: data).id
+    }
+
+    func findOrCreateFolder(named name: String) async throws -> String {
+        let token = try await accessToken()
+        let escaped = name.replacingOccurrences(of: "'", with: "\\'")
+        let query = "mimeType='application/vnd.google-apps.folder' and name='\(escaped)' and trashed=false"
+        var comps = URLComponents(string: "https://www.googleapis.com/drive/v3/files")!
+        comps.queryItems = [
+            .init(name: "q", value: query),
+            .init(name: "fields", value: "files(id,name)"),
+            .init(name: "pageSize", value: "1")
+        ]
+        var listReq = URLRequest(url: comps.url!)
+        listReq.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (listData, listResp) = try await URLSession.shared.data(for: listReq)
+        try Self.assertOK(response: listResp, data: listData)
+        struct ListResponse: Decodable { let files: [DriveFile] }
+        if let existing = (try JSONDecoder().decode(ListResponse.self, from: listData)).files.first {
+            return existing.id
+        }
+
+        var createReq = URLRequest(url: URL(string: "https://www.googleapis.com/drive/v3/files")!)
+        createReq.httpMethod = "POST"
+        createReq.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        createReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "name": name,
+            "mimeType": "application/vnd.google-apps.folder"
+        ]
+        createReq.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (createData, createResp) = try await URLSession.shared.data(for: createReq)
+        try Self.assertOK(response: createResp, data: createData)
+        struct CreateResponse: Decodable { let id: String }
+        return try JSONDecoder().decode(CreateResponse.self, from: createData).id
     }
 
     func exportAsHTML(docId: String) async throws -> String {

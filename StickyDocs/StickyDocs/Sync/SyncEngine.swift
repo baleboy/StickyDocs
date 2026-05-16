@@ -22,6 +22,7 @@ final class SyncEngine {
         var fetchRevisionId: (_ docId: String) async throws -> String?
         var pushBody: (_ docId: String, _ content: NSAttributedString) async throws -> Void
         var deleteDoc: (_ docId: String) async throws -> Void
+        var ensureStickiesFolder: () async throws -> Void = {}
     }
 
     let store: StickyStore
@@ -47,6 +48,7 @@ final class SyncEngine {
 
     func provisionDocIfNeeded(stickyId: String) async throws {
         guard var sticky = try store.fetch(id: stickyId), sticky.googleDocId == nil else { return }
+        try await deps.ensureStickiesFolder()
         let docId = try await deps.createDoc(sticky.title.isEmpty ? "Untitled sticky" : sticky.title)
         sticky.googleDocId = docId
         sticky.lastRevisionId = try await deps.fetchRevisionId(docId)

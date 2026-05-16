@@ -17,12 +17,18 @@ final class AppController {
         }
         let driveClient = GoogleDriveClient(accessToken: { try await AuthService.shared.accessToken() })
         let docsClient = GoogleDocsClient(accessToken: { try await AuthService.shared.accessToken() })
+        let folderIdCache = FolderIdCache(store: store, drive: driveClient)
+
         let deps = SyncEngine.Dependencies(
-            createDoc: { title in try await driveClient.createDoc(title: title) },
+            createDoc: { title in
+                let folderId = try await folderIdCache.id()
+                return try await driveClient.createDoc(title: title, parentFolderId: folderId)
+            },
             exportAsHTML: { try await driveClient.exportAsHTML(docId: $0) },
             fetchRevisionId: { try await docsClient.fetchRevisionId(docId: $0) },
             pushBody: { docId, content in try await docsClient.replaceDocumentBody(docId: docId, with: content) },
-            deleteDoc: { try await driveClient.deleteFile(id: $0) }
+            deleteDoc: { try await driveClient.deleteFile(id: $0) },
+            ensureStickiesFolder: { _ = try await folderIdCache.id() }
         )
         self.engine = SyncEngine(store: store, deps: deps)
     }
@@ -52,5 +58,29 @@ final class AppController {
         for sticky in try store.allActive() {
             showWindow(for: sticky)
         }
+    }
+}
+
+@MainActor
+private final class FolderIdCache {
+    private static let storeKey = "stickies_folder_id"
+    private static let folderName = "Stickies"
+
+    private let store: StickyStore
+    private let drive: GoogleDriveClient
+    private var cached: String?
+
+    init(store: StickyStore, drive: GoogleDriveClient) {
+        self.store = store
+        self.drive = drive
+        self.cached = try? store.getAppState(key: Self.storeKey)
+    }
+
+    func id() async throws -> String {
+        if let cached { return cached }
+        let id = try await drive.findOrCreateFolder(named: Self.folderName)
+        cached = id
+        try? store.setAppState(key: Self.storeKey, value: id)
+        return id
     }
 }
