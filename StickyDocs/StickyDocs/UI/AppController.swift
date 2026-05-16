@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import SwiftUI
 
 @MainActor
 final class AppController {
@@ -8,6 +9,7 @@ final class AppController {
     let store: StickyStore
     let engine: SyncEngine
     private var windowControllers: [String: StickyWindowController] = [:]
+    private var allStickiesWindow: NSWindow?
 
     private init() {
         do {
@@ -62,6 +64,24 @@ final class AppController {
         for sticky in pending {
             try? await engine.push(stickyId: sticky.id)
         }
+    }
+
+    func showAllStickiesPanel() {
+        if let existing = allStickiesWindow {
+            existing.makeKeyAndOrderFront(nil)
+            return
+        }
+        let hosting = NSHostingController(rootView: AllStickiesView(store: store) { [weak self] sticky in
+            self?.showWindow(for: sticky)
+        })
+        let window = NSWindow(contentViewController: hosting)
+        window.title = "All Stickies"
+        window.setContentSize(NSSize(width: 360, height: 480))
+        window.styleMask = [.titled, .closable, .resizable]
+        window.isReleasedWhenClosed = false
+        window.center()
+        allStickiesWindow = window
+        window.makeKeyAndOrderFront(nil)
     }
 
     func openStickiesFolderInBrowser() {

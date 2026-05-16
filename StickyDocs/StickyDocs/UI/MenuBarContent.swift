@@ -11,6 +11,10 @@ struct MenuBarContent: View {
         .keyboardShortcut("n", modifiers: [.command, .shift])
         .disabled(!auth.isSignedIn)
 
+        Button("Show All Stickies") {
+            AppController.shared.showAllStickiesPanel()
+        }
+
         Button("Sync Now") {
             Task { await AppController.shared.syncAllPending() }
         }
