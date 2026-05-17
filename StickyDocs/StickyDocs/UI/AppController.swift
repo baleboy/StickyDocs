@@ -68,21 +68,23 @@ final class AppController {
     }
 
     func showAllStickiesPanel() {
-        if let existing = allStickiesWindow {
-            existing.makeKeyAndOrderFront(nil)
-            return
+        if allStickiesWindow == nil {
+            let hosting = NSHostingController(rootView: AllStickiesView(store: store) { [weak self] sticky in
+                self?.showWindow(for: sticky)
+            })
+            let window = NSWindow(contentViewController: hosting)
+            window.title = "All Stickies"
+            window.setContentSize(NSSize(width: 360, height: 480))
+            window.styleMask = [.titled, .closable, .resizable]
+            window.isReleasedWhenClosed = false
+            window.center()
+            allStickiesWindow = window
         }
-        let hosting = NSHostingController(rootView: AllStickiesView(store: store) { [weak self] sticky in
-            self?.showWindow(for: sticky)
-        })
-        let window = NSWindow(contentViewController: hosting)
-        window.title = "All Stickies"
-        window.setContentSize(NSSize(width: 360, height: 480))
-        window.styleMask = [.titled, .closable, .resizable]
-        window.isReleasedWhenClosed = false
-        window.center()
-        allStickiesWindow = window
-        window.makeKeyAndOrderFront(nil)
+        // Equivalent to a dock-icon click: brings the app to the foreground
+        // and orders all its windows forward. Plain NSApp.activate is flaky
+        // from a MenuBarExtra action context.
+        NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+        allStickiesWindow?.makeKeyAndOrderFront(nil)
     }
 
     func resetAllLocalData() {
