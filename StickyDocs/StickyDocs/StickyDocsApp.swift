@@ -10,11 +10,7 @@ struct StickyDocsApp: App {
     }
 
     var body: some Scene {
-        MenuBarExtra("StickyDocs", systemImage: "note.text") {
-            MenuBarContent()
-        }
-
-        WindowGroup {
+        Window("StickyDocs", id: "main") {
             ContentView()
                 .task { try? AppController.shared.restoreOpenStickies() }
         }
@@ -33,6 +29,10 @@ struct StickyDocsApp: App {
                 }
                 .keyboardShortcut("u", modifiers: .command)
             }
+        }
+
+        MenuBarExtra("StickyDocs", systemImage: "note.text") {
+            MenuBarContent()
         }
     }
 }
