@@ -19,7 +19,7 @@ on macOS.
 - [ ] **New from menu bar.** ⇧⌘N (or "New Sticky" menu item). A yellow borderless window appears instantly — no network delay.
 - [ ] **No Doc yet.** Open Drive → Stickies/ folder. The newly-created empty sticky does **not** appear there.
 - [ ] **First push provisions Doc.** Type "Hello world" in the sticky. Click another app (window blurs). Wait a moment, then refresh Drive Stickies folder: a Doc titled "Hello world" appears.
-- [ ] **Title derivation — long first line.** Create a new sticky. Type a single line longer than 50 characters. Blur. Doc title falls back to `Sticky YYYY-MM-DD HH:MM`.
+- [ ] **Title derivation — long first line.** Create a new sticky. Type a single line longer than 50 characters. Blur. Doc title is the leading whole words of the first line that fit in 50 characters (no mid-word truncation). If even the first word exceeds 50 chars, title falls back to `Sticky YYYY-MM-DD HH:MM`.
 - [ ] **Title is stable after first sync.** In a synced sticky, edit so the first line is different ("Updated heading"). Blur. The Doc body updates, but the Drive file title does **not** change.
 
 ## 3. Window behavior

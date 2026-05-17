@@ -75,8 +75,16 @@ final class SyncEngine {
         let plain = HTMLNormalizer.attributedString(from: contentHTML).string
         let firstLine = plain.components(separatedBy: .newlines).first ?? ""
         let trimmed = firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty && trimmed.count <= 50 {
-            return trimmed
+        if !trimmed.isEmpty {
+            if trimmed.count <= 50 { return trimmed }
+            // Take as many whole words as fit in 50 chars (preserving order).
+            var picked = ""
+            for word in trimmed.split(separator: " ", omittingEmptySubsequences: true) {
+                let candidate = picked.isEmpty ? String(word) : "\(picked) \(word)"
+                if candidate.count > 50 { break }
+                picked = candidate
+            }
+            if !picked.isEmpty { return picked }
         }
         if !fallback.isEmpty { return fallback }
         let f = DateFormatter()
