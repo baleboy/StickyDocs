@@ -94,7 +94,7 @@ struct StickyTextEditor: NSViewRepresentable {
         textView.textColor = .black
         textView.backgroundColor = .clear
         textView.drawsBackground = false
-        textView.textContainerInset = NSSize(width: 4, height: 4)
+        textView.textContainerInset = NSSize(width: 8, height: 0)
         scrollView.drawsBackground = false
         scrollView.backgroundColor = .clear
 

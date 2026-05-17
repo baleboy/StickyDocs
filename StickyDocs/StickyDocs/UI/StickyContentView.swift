@@ -31,8 +31,6 @@ struct StickyContentView: View {
                 let html = HTMLNormalizer.html(from: newAttributed)
                 try? viewModel.engine.updateContent(stickyId: viewModel.sticky.id, html: html)
             }
-            .padding(.horizontal, 4)
-            .padding(.bottom, 4)
         }
         .background(Color(StickyColor.background(for: viewModel.sticky.color)))
         .overlay(alignment: .bottomTrailing) {
