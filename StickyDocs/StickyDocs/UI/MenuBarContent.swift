@@ -3,6 +3,7 @@ import AppKit
 
 struct MenuBarContent: View {
     @ObservedObject private var auth = AuthService.shared
+    @ObservedObject private var debug = DebugSettings.shared
 
     var body: some View {
         Button("New Sticky") {
@@ -38,6 +39,8 @@ struct MenuBarContent: View {
         Divider()
 
         Menu("Debug") {
+            Toggle("Show Sticky Size", isOn: $debug.showStickySize)
+
             Button("Reset All Local Data...") {
                 let alert = NSAlert()
                 alert.messageText = "Reset all local data?"

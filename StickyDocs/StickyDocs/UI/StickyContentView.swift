@@ -3,10 +3,12 @@ import AppKit
 
 struct StickyContentView: View {
     @ObservedObject var viewModel: StickyViewModel
+    @ObservedObject private var debug = DebugSettings.shared
     let initialHTML: String
     let onClose: () -> Void
 
     @State private var hovering = false
+    @State private var contentSize: CGSize = .zero
 
     private static let palette = ["yellow", "blue", "green", "pink", "purple", "gray"]
 
@@ -33,6 +35,24 @@ struct StickyContentView: View {
             }
         }
         .background(Color(StickyColor.background(for: viewModel.sticky.color)))
+        .background(
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { contentSize = proxy.size }
+                    .onChange(of: proxy.size) { _, new in contentSize = new }
+            }
+        )
+        .overlay(alignment: .topTrailing) {
+            if debug.showStickySize {
+                Text("\(Int(contentSize.width))×\(Int(contentSize.height))")
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.black.opacity(0.6))
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(.white.opacity(0.5), in: RoundedRectangle(cornerRadius: 3))
+                    .padding(4)
+            }
+        }
         .overlay(alignment: .bottomTrailing) {
             // Only show the status dot when there's something to communicate -
             // synced is the default and should be invisible.
