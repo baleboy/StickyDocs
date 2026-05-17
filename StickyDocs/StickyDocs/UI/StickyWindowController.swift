@@ -33,6 +33,7 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
             onClose: { [weak window] in window?.close() }
         ))
         window.contentViewController = hosting
+        window.setFrame(frame, display: false)
 
         super.init(window: window)
         window.delegate = self

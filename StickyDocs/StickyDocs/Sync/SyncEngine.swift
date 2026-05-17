@@ -40,7 +40,12 @@ final class SyncEngine {
     // Drive Doc. The Doc is provisioned on first push - if the sticky never
     // gets any content, no Doc is ever created (keeps Drive tidy).
     func createLocalSticky(title: String = "") throws -> Sticky {
-        let sticky = Sticky.makeNew(title: title)
+        var sticky = Sticky.makeNew(title: title)
+        let frame = StickyPlacement.nextFrame()
+        sticky.frameX = Double(frame.origin.x)
+        sticky.frameY = Double(frame.origin.y)
+        sticky.frameW = Double(frame.size.width)
+        sticky.frameH = Double(frame.size.height)
         try store.upsert(sticky)
         return sticky
     }
