@@ -62,8 +62,14 @@ final class AppController {
 
     func syncAllPending() async {
         let pending = (try? store.pendingPushes()) ?? []
+        NSLog("[StickyDocs] syncAllPending: \(pending.count) pending sticky/stickies")
         for sticky in pending {
-            try? await engine.push(stickyId: sticky.id)
+            do {
+                try await engine.push(stickyId: sticky.id)
+                NSLog("[StickyDocs] push OK for sticky \(sticky.id)")
+            } catch {
+                NSLog("[StickyDocs] push FAILED for sticky \(sticky.id): \(error)")
+            }
         }
     }
 

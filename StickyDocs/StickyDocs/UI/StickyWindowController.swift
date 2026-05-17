@@ -62,8 +62,17 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
         let id = stickyId
         let engine = engine
         Task { @MainActor in
-            guard let sticky = try? engine.store.fetch(id: id), sticky.pendingPush else { return }
-            try? await engine.push(stickyId: id)
+            guard let sticky = try? engine.store.fetch(id: id), sticky.pendingPush else {
+                NSLog("[StickyDocs] flushPendingPush: nothing to push for \(id)")
+                return
+            }
+            NSLog("[StickyDocs] flushPendingPush: pushing sticky \(id)")
+            do {
+                try await engine.push(stickyId: id)
+                NSLog("[StickyDocs] flushPendingPush: push OK for \(id)")
+            } catch {
+                NSLog("[StickyDocs] flushPendingPush: push FAILED for \(id): \(error)")
+            }
         }
     }
 

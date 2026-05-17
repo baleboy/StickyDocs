@@ -62,7 +62,8 @@ struct GoogleDriveClient {
         listReq.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         let (listData, listResp) = try await URLSession.shared.data(for: listReq)
         try Self.assertOK(response: listResp, data: listData)
-        struct ListResponse: Decodable { let files: [DriveFile] }
+        struct FolderRef: Decodable { let id: String; let name: String }
+        struct ListResponse: Decodable { let files: [FolderRef] }
         if let existing = (try JSONDecoder().decode(ListResponse.self, from: listData)).files.first {
             return existing.id
         }
