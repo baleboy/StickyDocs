@@ -37,6 +37,22 @@ struct MenuBarContent: View {
 
         Divider()
 
+        Menu("Debug") {
+            Button("Reset All Local Data...") {
+                let alert = NSAlert()
+                alert.messageText = "Reset all local data?"
+                alert.informativeText = "Deletes the local sticky database and signs you out. Google Docs in Drive are left untouched."
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: "Reset")
+                alert.addButton(withTitle: "Cancel")
+                if alert.runModal() == .alertFirstButtonReturn {
+                    AppController.shared.resetAllLocalData()
+                }
+            }
+        }
+
+        Divider()
+
         Button("Quit StickyDocs") {
             NSApplication.shared.terminate(nil)
         }

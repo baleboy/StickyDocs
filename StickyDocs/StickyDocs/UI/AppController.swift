@@ -85,6 +85,17 @@ final class AppController {
         window.makeKeyAndOrderFront(nil)
     }
 
+    func resetAllLocalData() {
+        for controller in windowControllers.values {
+            controller.close()
+        }
+        windowControllers.removeAll()
+        allStickiesWindow?.close()
+        allStickiesWindow = nil
+        try? store.wipeAll()
+        try? AuthService.shared.signOut()
+    }
+
     func openStickiesFolderInBrowser() {
         let id = (try? store.getAppState(key: "stickies_folder_id")) ?? nil
         if let id, let url = URL(string: "https://drive.google.com/drive/folders/\(id)") {

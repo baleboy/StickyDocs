@@ -110,6 +110,13 @@ final class StickyStore {
         }
     }
 
+    func wipeAll() throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM \(Sticky.databaseTableName)")
+            try db.execute(sql: "DELETE FROM app_state")
+        }
+    }
+
     func getAppState(key: String) throws -> String? {
         try dbQueue.read { db in
             try String.fetchOne(db, sql: "SELECT value FROM app_state WHERE key=?", arguments: [key])
