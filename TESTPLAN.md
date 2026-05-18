@@ -43,7 +43,6 @@ on macOS.
 - [ ] **Format menu.** App menu bar → Format → Bold/Italic/Underline work the same as shortcuts.
 - [ ] **Undo (⌘Z).** Type, then undo. Text reverts.
 - [ ] **Emoji (⌃⌘Space).** System emoji picker works inside the sticky.
-- [ ] **Spellcheck.** Misspelled word gets red underline; right-click suggests corrections.
 
 ## 5. Sync — push
 

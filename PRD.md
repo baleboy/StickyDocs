@@ -241,6 +241,7 @@ The following are explicitly **not** in v1 and should not creep in:
 
 Items intentionally deferred but planned:
 
+- **Configurable spellcheck.** Expose a preference to toggle continuous spellchecking (and optionally autocorrect) on the sticky `NSTextView`. Currently both are off by default and not user-adjustable.
 - **Replace loopback OAuth with `ASWebAuthenticationSession`.** Removes the in-process HTTP server (`LoopbackServer.swift`), avoids reliance on the user's default browser and any firewall/port issues, and presents sign-in as an in-app system sheet. PKCE stays; `redirect_uri` switches to a custom scheme (e.g. `com.balenet.stickydocs:/oauth`). Google's policy disallows OAuth in `WKWebView`, so `ASWebAuthenticationSession` is the only supported in-app option.
 
 ## Further Notes
