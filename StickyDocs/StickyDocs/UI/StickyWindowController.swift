@@ -9,6 +9,10 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
     private let onClose: (String) -> Void
     private let viewModel: StickyViewModel
     private var confirmedDelete = false
+    // Serializes flushes so windowDidResignKey + windowWillClose (both fire
+    // when the user clicks X) can't race two batchUpdates against the same
+    // stale endIndex and append the new content twice.
+    private var pushTask: Task<Void, Never>?
 
     init(sticky: Sticky, engine: SyncEngine, onClose: @escaping (String) -> Void) {
         self.stickyId = sticky.id
@@ -130,7 +134,9 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
     private func flushPendingPush() {
         let id = stickyId
         let engine = engine
-        Task { @MainActor in
+        let previous = pushTask
+        pushTask = Task { @MainActor in
+            await previous?.value
             guard let sticky = try? engine.store.fetch(id: id), sticky.pendingPush else {
                 NSLog("[StickyDocs] flushPendingPush: nothing to push for \(id)")
                 return
