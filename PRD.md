@@ -237,6 +237,12 @@ The following are explicitly **not** in v1 and should not creep in:
 - Comments and suggestions (will be destroyed by nuke-and-replace pushes; acceptable v1 tradeoff).
 - End-to-end encryption (content is at rest in Google Drive under Google's standard protections).
 
+## Roadmap (post-v1)
+
+Items intentionally deferred but planned:
+
+- **Replace loopback OAuth with `ASWebAuthenticationSession`.** Removes the in-process HTTP server (`LoopbackServer.swift`), avoids reliance on the user's default browser and any firewall/port issues, and presents sign-in as an in-app system sheet. PKCE stays; `redirect_uri` switches to a custom scheme (e.g. `com.balenet.stickydocs:/oauth`). Google's policy disallows OAuth in `WKWebView`, so `ASWebAuthenticationSession` is the only supported in-app option.
+
 ## Further Notes
 
 **Top technical risk** is HTML round-trip fidelity across three boundaries: `NSAttributedString` HTML serialization, Google Docs HTML export, and Google Docs API `batchUpdate` input. The recommended build order (HTMLNormalizer + round-trip harness *before* any UI work) exists specifically to validate this risk early. If round-trip cannot be made reliable for the v1 feature set, the fallback is to ship plain-text-only and reassess.
