@@ -9,7 +9,8 @@ final class StickyViewModel: ObservableObject {
     @Published private(set) var sticky: Sticky
     @Published var isKey: Bool = false
     let engine: SyncEngine
-    var onRequestClose: (() -> Void)?
+    var onRequestHide: (() -> Void)?
+    var onRequestDelete: (() -> Void)?
 
     private var cancellable: AnyDatabaseCancellable?
 
@@ -67,10 +68,7 @@ final class StickyViewModel: ObservableObject {
     }
 
     func delete() {
-        Task {
-            try? await engine.deleteSticky(id: sticky.id, alsoDeleteDoc: false)
-            onRequestClose?()
-        }
+        onRequestDelete?()
     }
 
     func recreateDoc() {

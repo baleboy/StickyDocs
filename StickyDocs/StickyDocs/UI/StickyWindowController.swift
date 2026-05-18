@@ -8,6 +8,7 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
     private let engine: SyncEngine
     private let onClose: (String) -> Void
     private let viewModel: StickyViewModel
+    private var confirmedDelete = false
 
     init(sticky: Sticky, engine: SyncEngine, onClose: @escaping (String) -> Void) {
         self.stickyId = sticky.id
@@ -27,23 +28,84 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 150, height: 80)
 
-        viewModel.onRequestClose = { [weak window] in window?.close() }
+        super.init(window: window)
+        window.delegate = self
+
+        viewModel.onRequestHide = { [weak self] in self?.requestHide() }
+        viewModel.onRequestDelete = { [weak self] in self?.requestDelete() }
         let hosting = NSHostingController(rootView: StickyContentView(
             viewModel: viewModel,
             initialHTML: sticky.contentHTML,
-            onClose: { [weak window] in window?.close() }
+            onHide: { [weak self] in self?.requestHide() },
+            onDelete: { [weak self] in self?.requestDelete() }
         ))
         window.contentViewController = hosting
         window.setFrame(frame, display: false)
-
-        super.init(window: window)
-        window.delegate = self
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
+    func requestHide() {
+        guard let window else { return }
+        window.close()
+    }
+
+    func requestDelete() {
+        guard let window else { return }
+
+        // Empty, never-synced sticky: silent delete — nothing to lose.
+        if let sticky = try? engine.store.fetch(id: stickyId),
+           sticky.googleDocId == nil,
+           HTMLNormalizer.attributedString(from: sticky.contentHTML).string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            confirmedDelete = true
+            let id = stickyId
+            let engine = engine
+            Task { @MainActor in
+                try? await engine.deleteSticky(id: id, alsoDeleteDoc: false)
+                window.close()
+            }
+            return
+        }
+
+        let alert = NSAlert()
+        alert.messageText = "Delete this sticky?"
+        alert.informativeText = "The sticky will be removed permanently. By default the underlying Google Doc is kept in Drive."
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+
+        let hasDoc = (try? engine.store.fetch(id: stickyId))?.googleDocId != nil
+        let checkbox = NSButton(checkboxWithTitle: "Also delete the Google Doc in Drive", target: nil, action: nil)
+        checkbox.state = .off
+        checkbox.isEnabled = hasDoc
+        alert.accessoryView = checkbox
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        let alsoDeleteDoc = hasDoc && checkbox.state == .on
+        confirmedDelete = true
+        let id = stickyId
+        let engine = engine
+        Task { @MainActor in
+            do {
+                try await engine.deleteSticky(id: id, alsoDeleteDoc: alsoDeleteDoc)
+            } catch {
+                NSLog("[StickyDocs] deleteSticky failed for \(id): \(error)")
+            }
+            window.close()
+        }
+    }
+
     func windowWillClose(_ notification: Notification) {
-        flushPendingPush()
+        if !confirmedDelete {
+            // Hide path: flush any pending push and mark closed so the sticky
+            // doesn't auto-reopen on next launch. It remains in the DB and is
+            // reachable via the All Stickies panel.
+            flushPendingPush()
+            if var sticky = try? engine.store.fetch(id: stickyId) {
+                sticky.isOpen = false
+                try? engine.store.upsert(sticky)
+            }
+        }
         onClose(stickyId)
     }
 

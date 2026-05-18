@@ -43,6 +43,10 @@ final class AppController {
     }
 
     func showWindow(for sticky: Sticky) {
+        if !sticky.isOpen, var s = try? store.fetch(id: sticky.id) {
+            s.isOpen = true
+            try? store.upsert(s)
+        }
         if let existing = windowControllers[sticky.id] {
             existing.showWindow(nil)
             return
@@ -55,7 +59,7 @@ final class AppController {
     }
 
     func restoreOpenStickies() throws {
-        for sticky in try store.allActive() {
+        for sticky in try store.allOpen() {
             showWindow(for: sticky)
         }
     }

@@ -55,6 +55,11 @@ final class StickyStore {
                 t.column("value", .text).notNull()
             }
         }
+        m.registerMigration("v2_is_open") { db in
+            try db.alter(table: Sticky.databaseTableName) { t in
+                t.add(column: "is_open", .boolean).notNull().defaults(to: true)
+            }
+        }
         return m
     }
 
@@ -82,6 +87,15 @@ final class StickyStore {
         try dbQueue.read { db in
             try Sticky
                 .filter(Sticky.CodingKeys.deletedLocally == false)
+                .order(Sticky.CodingKeys.updatedAt.desc)
+                .fetchAll(db)
+        }
+    }
+
+    func allOpen() throws -> [Sticky] {
+        try dbQueue.read { db in
+            try Sticky
+                .filter(Sticky.CodingKeys.deletedLocally == false && Sticky.CodingKeys.isOpen == true)
                 .order(Sticky.CodingKeys.updatedAt.desc)
                 .fetchAll(db)
         }

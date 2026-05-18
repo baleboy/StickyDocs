@@ -28,7 +28,11 @@ on macOS.
 - [ ] **Across Spaces.** Switch to a different Space via Mission Control or trackpad. The sticky is still visible in the same screen position.
 - [ ] **Drag to move.** Drag the sticky from anywhere in the top 16-pixel strip (above the text) or from a non-text area. The sticky moves smoothly. Frame persists across relaunch.
 - [ ] **Resize.** Drag the bottom-right corner. Frame persists across relaunch.
-- [ ] **Close button.** Hover over the sticky — small ✕ appears top-left. Click it; window closes. Doc remains in Drive. Sticky still exists in DB (re-opens via All Stickies → click).
+- [ ] **Close (✕) button = hide.** Hover over the sticky — a small ✕ appears top-left and a small trash icon top-right. Click ✕: window closes silently. Sticky still exists in All Stickies. Doc remains in Drive. Sticky does NOT auto-reopen on next launch (reopen via All Stickies → click row).
+- [ ] **Delete (trash) button = remove.** Click the trash icon top-right. Confirmation dialog appears ("Delete this sticky?" with "Also delete the Google Doc in Drive" checkbox, default off). Click Delete: window closes, sticky disappears from All Stickies. Click Cancel: nothing changes.
+- [ ] **Delete with also-delete-Doc.** On a synced sticky, click trash, tick the checkbox, click Delete. Sticky gone locally; Doc is removed from Drive.
+- [ ] **Empty new sticky — trash skips confirmation.** Create a new sticky, don't type, click the trash icon. Window closes immediately with no dialog (nothing to lose).
+- [ ] **Pending edits — hide still pushes.** Type in a sticky, immediately click ✕ (don't blur first). Window closes; verify in Drive that the Doc body reflects the typed content (push fires on hide).
 
 ## 4. Editing & formatting
 
@@ -44,7 +48,7 @@ on macOS.
 ## 5. Sync — push
 
 - [ ] **Push on blur.** Type in sticky, click another app, refresh Drive. Doc body matches sticky.
-- [ ] **Push on close.** Type in sticky, click ✕. Doc body updates (refresh Drive to verify).
+- [ ] **Push on close.** Type in sticky, click ✕. Doc body updates in Drive (refresh to verify).
 - [ ] **Empty stickies don't sync.** Create new sticky, don't type, blur. No Doc appears in Drive.
 - [ ] **Whitespace-only doesn't sync.** Type just spaces/newlines, blur. No Doc.
 - [ ] **Sync Now.** Edit a sticky → menu bar extra → Sync Now. All pending stickies push.
@@ -52,7 +56,7 @@ on macOS.
 ## 6. Sync — pull
 
 - [ ] **Pull after remote edit.** Open the Doc in browser. Edit content (add a paragraph). Save. Back in app, close and re-open the sticky (current build pulls on focus indirectly via app relaunch — pull triggers are not yet wired to the UI button beyond initial fetch). *Known gap: explicit pull trigger not in menu.*
-- [ ] **Round-trip fidelity.** Type in sticky: bold, italic, underline, bulleted list, numbered list. Blur. Open the Doc in browser — formatting renders correctly. Close sticky in app, re-open via All Stickies — formatting still correct locally.
+- [ ] **Round-trip fidelity.** Type in sticky: bold, italic, underline, bulleted list, numbered list. Blur. Open the Doc in browser — formatting renders correctly. Quit and relaunch the app — sticky reappears with formatting intact locally.
 
 ## 7. Conflict (manual provocation)
 
@@ -70,7 +74,7 @@ on macOS.
 - [ ] **Open in Google Docs.** Right-click sticky → "Open in Google Docs". Browser opens at the Doc.
 - [ ] **Copy Doc link.** Right-click → "Copy Doc link". Paste into anywhere — URL is `https://docs.google.com/document/d/<id>/edit`.
 - [ ] **Sync now.** Right-click → "Sync now". Pending push (if any) drains.
-- [ ] **Delete sticky.** Right-click → "Delete sticky". Window closes. Sticky disappears from All Stickies. Doc remains in Drive (not auto-trashed in current build).
+- [ ] **Delete sticky.** Right-click → "Delete sticky". Same confirmation dialog as the trash icon. Click Delete: window closes, sticky disappears from All Stickies. Doc handling honors the checkbox.
 
 ## 10. All Stickies panel
 
@@ -89,7 +93,8 @@ on macOS.
 ## 12. Persistence
 
 - [ ] **Open stickies survive relaunch.** Open three stickies, position them at distinct points on screen. Quit. Relaunch. All three reappear at the same positions with the same content and colors.
-- [ ] **Closed stickies don't auto-open.** Close a sticky's window. Quit. Relaunch. That sticky does not appear (still in DB; visible via All Stickies).
+- [ ] **Hidden stickies don't auto-open.** Click ✕ on a sticky. Quit. Relaunch. That sticky does not appear, but is still visible (and clickable to reopen) in All Stickies.
+- [ ] **Deleted stickies don't come back.** Trash a sticky's window and confirm Delete. Quit. Relaunch. That sticky does not appear and is gone from All Stickies.
 - [ ] **GRDB file location.** `~/Library/Containers/com.baleware.StickyDocs/Data/Library/Application Support/StickyDocs/stickies.sqlite` exists and grows with use.
 
 ## 13. Drive folder
@@ -117,7 +122,6 @@ on macOS.
 - Explicit pull trigger isn't wired to UI yet (pull happens implicitly only).
 - Conflict toast / "Restore my version" action not yet surfaced.
 - Push failures don't show user-visible errors (status dot stays orange forever).
-- "Delete Doc too" checkbox on close not implemented.
 - No debounced background push — push only on blur / explicit Sync Now.
 - No periodic Drive `changes.list` polling — remote changes only show after relaunch.
 - Preferences window and onboarding screen not built.

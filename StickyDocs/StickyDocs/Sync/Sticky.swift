@@ -20,6 +20,7 @@ struct Sticky: Codable, Identifiable, Equatable, FetchableRecord, PersistableRec
     var lastSyncedAt: Date?
     var pendingPush: Bool
     var deletedLocally: Bool
+    var isOpen: Bool
 
     static let databaseTableName = "stickies"
 
@@ -42,6 +43,7 @@ struct Sticky: Codable, Identifiable, Equatable, FetchableRecord, PersistableRec
         case lastSyncedAt = "last_synced_at"
         case pendingPush = "pending_push"
         case deletedLocally = "deleted_locally"
+        case isOpen = "is_open"
     }
 
     enum SyncStatus {
@@ -77,7 +79,8 @@ struct Sticky: Codable, Identifiable, Equatable, FetchableRecord, PersistableRec
             updatedAt: now,
             lastSyncedAt: nil,
             pendingPush: false,
-            deletedLocally: false
+            deletedLocally: false,
+            isOpen: true
         )
     }
 }

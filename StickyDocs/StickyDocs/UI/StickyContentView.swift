@@ -5,7 +5,8 @@ struct StickyContentView: View {
     @ObservedObject var viewModel: StickyViewModel
     @ObservedObject private var debug = DebugSettings.shared
     let initialHTML: String
-    let onClose: () -> Void
+    let onHide: () -> Void
+    let onDelete: () -> Void
 
     @State private var contentSize: CGSize = .zero
 
@@ -23,7 +24,7 @@ struct StickyContentView: View {
                 }
                 .opacity(viewModel.isKey ? 1 : 0)
                 HStack(spacing: 0) {
-                    Button(action: onClose) {
+                    Button(action: onHide) {
                         Image(systemName: "xmark")
                             .font(.system(size: 8, weight: .bold))
                             .foregroundStyle(.black.opacity(0.5))
@@ -31,8 +32,18 @@ struct StickyContentView: View {
                             .background(Circle().fill(.black.opacity(0.08)))
                     }
                     .buttonStyle(.plain)
+                    .help("Close (sticky stays in All Stickies)")
                     .opacity(viewModel.isKey ? 1 : 0)
                     Spacer(minLength: 0)
+                    Button(action: onDelete) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 9, weight: .regular))
+                            .foregroundStyle(.black.opacity(0.5))
+                            .frame(width: 12, height: 12)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Delete sticky")
+                    .opacity(viewModel.isKey ? 1 : 0)
                 }
                 .padding(.horizontal, 4)
             }
@@ -51,7 +62,7 @@ struct StickyContentView: View {
                     .onChange(of: proxy.size) { _, new in contentSize = new }
             }
         )
-        .overlay(alignment: .topTrailing) {
+        .overlay(alignment: .bottomLeading) {
             if debug.showStickySize {
                 Text("\(Int(contentSize.width))×\(Int(contentSize.height))")
                     .font(.system(size: 9, weight: .medium, design: .monospaced))
