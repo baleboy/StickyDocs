@@ -8,6 +8,7 @@ final class AppController {
 
     let store: StickyStore
     let engine: SyncEngine
+    private(set) var isTerminating = false
     private var windowControllers: [String: StickyWindowController] = [:]
     private var allStickiesWindow: NSWindow?
 
@@ -34,6 +35,14 @@ final class AppController {
             isTrashed: { try await driveClient.isTrashed(docId: $0) }
         )
         self.engine = SyncEngine(store: store, deps: deps)
+
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.isTerminating = true
+        }
     }
 
     func newSticky() throws -> Sticky {

@@ -97,11 +97,12 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         if !confirmedDelete {
-            // Hide path: flush any pending push and mark closed so the sticky
-            // doesn't auto-reopen on next launch. It remains in the DB and is
-            // reachable via the All Stickies panel.
             flushPendingPush()
-            if var sticky = try? engine.store.fetch(id: stickyId) {
+            // Mark closed only for an explicit user-initiated hide. On app
+            // quit every window also gets windowWillClose, and we want
+            // those stickies to reopen on next launch.
+            if !AppController.shared.isTerminating,
+               var sticky = try? engine.store.fetch(id: stickyId) {
                 sticky.isOpen = false
                 try? engine.store.upsert(sticky)
             }
