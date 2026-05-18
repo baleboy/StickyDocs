@@ -7,12 +7,16 @@ final class StickyNSTextView: NSTextView {
             return super.performKeyEquivalent(with: event)
         }
         switch event.charactersIgnoringModifiers {
-        case "b": applyTrait(.boldFontMask); return true
-        case "i": applyTrait(.italicFontMask); return true
-        case "u": toggleUnderline(); return true
+        case "b": toggleBold(nil); return true
+        case "i": toggleItalic(nil); return true
+        case "u": toggleUnderline(nil); return true
         default: return super.performKeyEquivalent(with: event)
         }
     }
+
+    @objc func toggleBold(_ sender: Any?) { applyTrait(.boldFontMask) }
+    @objc func toggleItalic(_ sender: Any?) { applyTrait(.italicFontMask) }
+    @objc func toggleUnderline(_ sender: Any?) { toggleUnderlineTrait() }
 
     private func applyTrait(_ trait: NSFontTraitMask) {
         let range = selectedRange()
@@ -41,7 +45,7 @@ final class StickyNSTextView: NSTextView {
         didChangeText()
     }
 
-    private func toggleUnderline() {
+    private func toggleUnderlineTrait() {
         let range = selectedRange()
         if range.length == 0 {
             var attrs = typingAttributes
