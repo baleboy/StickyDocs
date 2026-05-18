@@ -7,6 +7,7 @@ import GRDB
 @MainActor
 final class StickyViewModel: ObservableObject {
     @Published private(set) var sticky: Sticky
+    @Published var isKey: Bool = false
     let engine: SyncEngine
     var onRequestClose: (() -> Void)?
 

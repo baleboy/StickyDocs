@@ -7,11 +7,13 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
     private let stickyId: String
     private let engine: SyncEngine
     private let onClose: (String) -> Void
+    private let viewModel: StickyViewModel
 
     init(sticky: Sticky, engine: SyncEngine, onClose: @escaping (String) -> Void) {
         self.stickyId = sticky.id
         self.engine = engine
         self.onClose = onClose
+        self.viewModel = StickyViewModel(sticky: sticky, engine: engine)
 
         let frame = NSRect(x: sticky.frameX, y: sticky.frameY, width: sticky.frameW, height: sticky.frameH)
         let style: NSWindow.StyleMask = [.borderless, .resizable]
@@ -25,7 +27,6 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 150, height: 80)
 
-        let viewModel = StickyViewModel(sticky: sticky, engine: engine)
         viewModel.onRequestClose = { [weak window] in window?.close() }
         let hosting = NSHostingController(rootView: StickyContentView(
             viewModel: viewModel,
@@ -46,7 +47,12 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
         onClose(stickyId)
     }
 
+    func windowDidBecomeKey(_ notification: Notification) {
+        viewModel.isKey = true
+    }
+
     func windowDidResignKey(_ notification: Notification) {
+        viewModel.isKey = false
         flushPendingPush()
     }
 

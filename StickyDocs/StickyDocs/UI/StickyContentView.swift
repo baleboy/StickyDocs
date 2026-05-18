@@ -7,26 +7,35 @@ struct StickyContentView: View {
     let initialHTML: String
     let onClose: () -> Void
 
-    @State private var hovering = false
     @State private var contentSize: CGSize = .zero
 
     private static let palette = ["yellow", "blue", "green", "pink", "purple", "gray"]
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(.black.opacity(0.5))
-                        .frame(width: 12, height: 12)
-                        .background(Circle().fill(.black.opacity(0.08)))
+            ZStack {
+                HStack(spacing: 3) {
+                    ForEach(0..<3) { _ in
+                        Circle()
+                            .fill(.black.opacity(0.35))
+                            .frame(width: 3, height: 3)
+                    }
                 }
-                .buttonStyle(.plain)
-                .opacity(hovering ? 1 : 0)
-                Spacer(minLength: 0)
+                .opacity(viewModel.isKey ? 1 : 0)
+                HStack(spacing: 0) {
+                    Button(action: onClose) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(.black.opacity(0.5))
+                            .frame(width: 12, height: 12)
+                            .background(Circle().fill(.black.opacity(0.08)))
+                    }
+                    .buttonStyle(.plain)
+                    .opacity(viewModel.isKey ? 1 : 0)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 4)
             }
-            .padding(.horizontal, 4)
             .frame(height: 16)
 
             StickyTextEditor(initialHTML: initialHTML) { newAttributed in
@@ -84,6 +93,5 @@ struct StickyContentView: View {
             Divider()
             Button("Delete sticky", role: .destructive) { viewModel.delete() }
         }
-        .onHover { hovering = $0 }
     }
 }
