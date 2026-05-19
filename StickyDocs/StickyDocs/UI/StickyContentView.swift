@@ -4,6 +4,7 @@ import AppKit
 struct StickyContentView: View {
     @ObservedObject var viewModel: StickyViewModel
     @ObservedObject private var debug = DebugSettings.shared
+    @ObservedObject private var app = AppController.shared
     let onHide: () -> Void
     let onDelete: () -> Void
 
@@ -73,9 +74,16 @@ struct StickyContentView: View {
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            // Only show the status dot when there's something to communicate -
-            // synced is the default and should be invisible.
-            if viewModel.sticky.syncStatus != .synced {
+            // Spinner takes priority while a pull is in flight for this sticky.
+            // Otherwise show the status dot only when there's something to
+            // communicate (synced is the default and stays invisible).
+            if app.syncingStickyIds.contains(viewModel.sticky.id) {
+                Circle()
+                    .fill(Color.blue.opacity(0.55))
+                    .frame(width: 5, height: 5)
+                    .padding(5)
+                    .help("Syncing from Drive...")
+            } else if viewModel.sticky.syncStatus != .synced {
                 Circle()
                     .fill(viewModel.sticky.syncStatus.swiftUIColor.opacity(0.55))
                     .frame(width: 5, height: 5)

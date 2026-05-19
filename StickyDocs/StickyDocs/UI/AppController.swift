@@ -1,9 +1,10 @@
 import Foundation
 import AppKit
 import SwiftUI
+import Combine
 
 @MainActor
-final class AppController {
+final class AppController: ObservableObject {
     static let shared = AppController()
 
     let store: StickyStore
@@ -11,6 +12,9 @@ final class AppController {
     private(set) var isTerminating = false
     private var windowControllers: [String: StickyWindowController] = [:]
     private var allStickiesWindow: NSWindow?
+    // Sticky ids currently being pulled from Drive. UI observes this to show
+    // a spinner in place of the status dot.
+    @Published private(set) var syncingStickyIds: Set<String> = []
 
     private init() {
         do {
@@ -95,12 +99,22 @@ final class AppController {
         let provisioned = all.filter { $0.googleDocId != nil }
         NSLog("[StickyDocs] pullAllFromDrive: \(provisioned.count) sticky/stickies")
         for sticky in provisioned {
+            syncingStickyIds.insert(sticky.id)
+            let start = Date()
             do {
                 let outcome = try await engine.pull(stickyId: sticky.id)
                 NSLog("[StickyDocs] pull \(outcome) for sticky \(sticky.id)")
             } catch {
                 NSLog("[StickyDocs] pull FAILED for sticky \(sticky.id): \(error)")
             }
+            // Keep the spinner visible long enough to be perceptible even
+            // when the round-trip is fast (revisionId check + 304-equivalent).
+            let elapsed = Date().timeIntervalSince(start)
+            let minVisible: TimeInterval = 0.35
+            if elapsed < minVisible {
+                try? await Task.sleep(nanoseconds: UInt64((minVisible - elapsed) * 1_000_000_000))
+            }
+            syncingStickyIds.remove(sticky.id)
         }
     }
 
