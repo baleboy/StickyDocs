@@ -86,6 +86,34 @@ final class AppController {
         }
     }
 
+    // Pulls every provisioned sticky from Drive. Used on app launch and as
+    // part of "Sync Now" so remote edits made via docs.google.com surface
+    // in the app. No-op when signed out.
+    func pullAllFromDrive() async {
+        guard AuthService.shared.isSignedIn else { return }
+        let all = (try? store.allActive()) ?? []
+        let provisioned = all.filter { $0.googleDocId != nil }
+        NSLog("[StickyDocs] pullAllFromDrive: \(provisioned.count) sticky/stickies")
+        for sticky in provisioned {
+            do {
+                let outcome = try await engine.pull(stickyId: sticky.id)
+                NSLog("[StickyDocs] pull \(outcome) for sticky \(sticky.id)")
+            } catch {
+                NSLog("[StickyDocs] pull FAILED for sticky \(sticky.id): \(error)")
+            }
+        }
+    }
+
+    // Sync Now: pull first so remote edits land before we push any local
+    // pending. If pull picks up a remote change for a sticky that also had
+    // a pending local edit, the conflict path stashes local into
+    // conflict_backup_html and pendingPush is cleared - so the subsequent
+    // push pass simply skips it.
+    func syncNow() async {
+        await pullAllFromDrive()
+        await syncAllPending()
+    }
+
     func showAllStickiesPanel() {
         if allStickiesWindow == nil {
             let hosting = NSHostingController(rootView: AllStickiesView(store: store) { [weak self] sticky in

@@ -4,7 +4,6 @@ import AppKit
 struct StickyContentView: View {
     @ObservedObject var viewModel: StickyViewModel
     @ObservedObject private var debug = DebugSettings.shared
-    let initialHTML: String
     let onHide: () -> Void
     let onDelete: () -> Void
 
@@ -49,7 +48,7 @@ struct StickyContentView: View {
             }
             .frame(height: 16)
 
-            StickyTextEditor(initialHTML: initialHTML) { newAttributed in
+            StickyTextEditor(html: viewModel.sticky.contentHTML) { newAttributed in
                 let html = HTMLNormalizer.html(from: newAttributed)
                 try? viewModel.engine.updateContent(stickyId: viewModel.sticky.id, html: html)
             }

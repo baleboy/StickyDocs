@@ -17,7 +17,7 @@ struct MenuBarContent: View {
         }
 
         Button("Sync Now") {
-            Task { await AppController.shared.syncAllPending() }
+            Task { await AppController.shared.syncNow() }
         }
         .disabled(!auth.isSignedIn)
 

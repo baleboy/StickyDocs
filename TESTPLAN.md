@@ -50,17 +50,17 @@ on macOS.
 - [ ] **Push on close.** Type in sticky, click ✕. Doc body updates in Drive (refresh to verify).
 - [ ] **Empty stickies don't sync.** Create new sticky, don't type, blur. No Doc appears in Drive.
 - [ ] **Whitespace-only doesn't sync.** Type just spaces/newlines, blur. No Doc.
-- [ ] **Sync Now.** Edit a sticky → menu bar extra → Sync Now. All pending stickies push.
+- [ ] **Sync Now.** Edit a sticky → menu bar extra → Sync Now. All pending stickies push, and any remote edits are pulled in first.
 
 ## 6. Sync — pull
 
-- [ ] **Pull after remote edit.** Open the Doc in browser. Edit content (add a paragraph). Save. Back in app, close and re-open the sticky (current build pulls on focus indirectly via app relaunch — pull triggers are not yet wired to the UI button beyond initial fetch). *Known gap: explicit pull trigger not in menu.*
+- [ ] **Pull after remote edit.** Open the Doc in browser. Edit content (add a paragraph). Save. Back in app, trigger pull either by relaunching the app or by clicking Sync Now in the menu bar. Sticky updates to show the remote content. *Pull-on-focus per-sticky is deferred to v2.*
 - [ ] **Round-trip fidelity.** Type in sticky: bold, italic, underline, bulleted list, numbered list. Blur. Open the Doc in browser — formatting renders correctly. Quit and relaunch the app — sticky reappears with formatting intact locally.
 
 ## 7. Conflict (manual provocation)
 
 - [ ] **Setup.** Sign in. Create sticky, type "local". Blur (syncs). Open Doc in browser, type "remote", save.
-- [ ] **Triggering pull.** Currently the easiest way to trigger pull is to relaunch the app (pull-on-focus is partial). Expected: remote wins; sticky shows "remote"; previous "local" is stashed in `conflict_backup_html`. *Status dot does not yet surface conflicts visually — known gap.*
+- [ ] **Provoking the conflict.** Before triggering pull, also edit the sticky locally (e.g. append " edit") but do **not** blur — `pendingPush` must still be true with content diverged from `lastSyncedHTML`. Then trigger pull via Sync Now (or relaunch). Expected: remote wins; sticky shows the remote content; previous local edit is stashed in `conflict_backup_html`. *Status dot does not yet surface conflicts visually — known gap.*
 
 ## 8. Colors
 

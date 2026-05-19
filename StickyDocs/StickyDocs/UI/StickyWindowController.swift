@@ -39,7 +39,6 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
         viewModel.onRequestDelete = { [weak self] in self?.requestDelete() }
         let hosting = NSHostingController(rootView: StickyContentView(
             viewModel: viewModel,
-            initialHTML: sticky.contentHTML,
             onHide: { [weak self] in self?.requestHide() },
             onDelete: { [weak self] in self?.requestDelete() }
         ))

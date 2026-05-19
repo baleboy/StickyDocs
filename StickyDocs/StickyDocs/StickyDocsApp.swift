@@ -12,7 +12,10 @@ struct StickyDocsApp: App {
     var body: some Scene {
         Window("StickyDocs", id: "main") {
             ContentView()
-                .task { try? AppController.shared.restoreOpenStickies() }
+                .task {
+                    try? AppController.shared.restoreOpenStickies()
+                    await AppController.shared.pullAllFromDrive()
+                }
         }
         .commands {
             CommandMenu("Format") {

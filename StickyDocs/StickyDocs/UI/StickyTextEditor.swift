@@ -65,7 +65,10 @@ final class StickyNSTextView: NSTextView {
 }
 
 struct StickyTextEditor: NSViewRepresentable {
-    let initialHTML: String
+    // Bound to the sticky's current HTML. Re-applied by updateNSView when the
+    // store changes underneath us (e.g. a pull pulled in a remote edit) so
+    // long as the user isn't actively typing in this text view.
+    let html: String
     let onChange: (NSAttributedString) -> Void
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -102,14 +105,29 @@ struct StickyTextEditor: NSViewRepresentable {
         scrollView.drawsBackground = false
         scrollView.backgroundColor = .clear
 
-        let initialAttr = HTMLNormalizer.attributedString(from: initialHTML)
+        let initialAttr = HTMLNormalizer.attributedString(from: html)
         textView.textStorage?.setAttributedString(initialAttr)
         textView.delegate = context.coordinator
         context.coordinator.textView = textView
         return scrollView
     }
 
-    func updateNSView(_ nsView: NSScrollView, context: Context) {}
+    func updateNSView(_ nsView: NSScrollView, context: Context) {
+        guard let textView = nsView.documentView as? NSTextView,
+              let storage = textView.textStorage else { return }
+        // Don't clobber while the user is actively typing in this field.
+        // (Window-key + first-responder is the precise check — we want
+        // Sync Now triggered from the menu bar, which steals key, to still
+        // refresh a sticky the user was looking at.)
+        if textView.window?.isKeyWindow == true,
+           textView.window?.firstResponder === textView {
+            return
+        }
+        let currentHTML = HTMLNormalizer.html(from: NSAttributedString(attributedString: storage))
+        if currentHTML == html { return }
+        let newAttr = HTMLNormalizer.attributedString(from: html)
+        storage.setAttributedString(newAttr)
+    }
 
     func makeCoordinator() -> Coordinator { Coordinator(onChange: onChange) }
 
