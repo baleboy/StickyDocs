@@ -15,6 +15,7 @@ final class AppController: ObservableObject {
     // Sticky ids currently being pulled from Drive. UI observes this to show
     // a spinner in place of the status dot.
     @Published private(set) var syncingStickyIds: Set<String> = []
+    private var authCancellable: AnyCancellable?
 
     private init() {
         do {
@@ -47,6 +48,17 @@ final class AppController: ObservableObject {
         ) { [weak self] _ in
             self?.isTerminating = true
         }
+
+        // Trigger a sync whenever auth transitions from signed-out to signed-in,
+        // so edits made while logged out are pushed (and remote changes pulled)
+        // without requiring the user to invoke Sync Now.
+        authCancellable = AuthService.shared.$isSignedIn
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] signedIn in
+                guard signedIn else { return }
+                Task { @MainActor in await self?.syncNow() }
+            }
     }
 
     func newSticky() throws -> Sticky {
