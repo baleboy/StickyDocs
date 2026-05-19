@@ -77,6 +77,16 @@ final class StickyViewModel: ObservableObject {
             reload()
         }
     }
+
+    func restoreBackup() {
+        try? engine.restoreBackup(stickyId: sticky.id)
+        reload()
+    }
+
+    func discardBackup() {
+        try? engine.discardBackup(stickyId: sticky.id)
+        reload()
+    }
 }
 
 extension Sticky.SyncStatus {

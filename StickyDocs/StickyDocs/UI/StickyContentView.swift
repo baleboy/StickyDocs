@@ -73,6 +73,18 @@ struct StickyContentView: View {
                     .padding(4)
             }
         }
+        .overlay(alignment: .topLeading) {
+            if viewModel.sticky.conflictBackupHTML != nil {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.orange)
+                    .padding(3)
+                    .background(Circle().fill(.white.opacity(0.85)))
+                    .padding(.leading, 18)
+                    .padding(.top, 2)
+                    .help("Remote version replaced your unsynced edits. Right-click to restore or discard your backup.")
+            }
+        }
         .overlay(alignment: .bottomTrailing) {
             // Spinner takes priority while a pull is in flight for this sticky.
             // Otherwise show the status dot only when there's something to
@@ -107,6 +119,11 @@ struct StickyContentView: View {
                     .disabled(viewModel.sticky.googleDocId == nil)
                 Button("Copy Doc link") { viewModel.copyDocLink() }
                     .disabled(viewModel.sticky.googleDocId == nil)
+            }
+            if viewModel.sticky.conflictBackupHTML != nil {
+                Divider()
+                Button("Restore my version") { viewModel.restoreBackup() }
+                Button("Discard my backup") { viewModel.discardBackup() }
             }
             Divider()
             Button("Delete sticky", role: .destructive) { viewModel.delete() }

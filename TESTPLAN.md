@@ -61,7 +61,12 @@ on macOS.
 ## 7. Conflict (manual provocation)
 
 - [ ] **Setup.** Sign in. Create sticky, type "local". Blur (syncs). Open Doc in browser, type "remote", save.
-- [ ] **Provoking the conflict.** Before triggering pull, also edit the sticky locally (e.g. append " edit") but do **not** blur — `pendingPush` must still be true with content diverged from `lastSyncedHTML`. Then trigger pull via Sync Now (or relaunch). Expected: remote wins; sticky shows the remote content; previous local edit is stashed in `conflict_backup_html`. *Status dot does not yet surface conflicts visually — known gap.*
+- [ ] **Provoking the conflict.** Before triggering pull, also edit the sticky locally (e.g. append " edit") but do **not** blur — `pendingPush` must still be true with content diverged from `lastSyncedHTML`. Then trigger pull via Sync Now (or relaunch). Expected: remote wins; sticky shows the remote content; previous local edit is stashed in `conflict_backup_html`.
+- [ ] **Conflict badge appears.** After the conflict resolves above, an orange warning triangle is visible in the sticky's top-left corner. Hovering shows a tooltip explaining a backup exists.
+- [ ] **Badge persists across relaunch.** Quit and relaunch with the conflict unresolved. The badge is still there (driven by `conflict_backup_html` in the DB).
+- [ ] **Restore my version.** Right-click the sticky → "Restore my version". Content reverts to the local edit; badge disappears; sticky becomes `pendingPush=true`. Blur to push — Doc in Drive now matches the local edit again.
+- [ ] **Discard my backup.** Re-create a conflict, then right-click → "Discard my backup". Content stays on the remote version; badge disappears; `conflict_backup_html` is `nil`; no push is triggered.
+- [ ] **Menu items only when conflict exists.** With no conflict, "Restore my version" / "Discard my backup" entries are absent from the context menu.
 
 ## 8. Colors
 
@@ -120,7 +125,6 @@ on macOS.
 ## Known gaps (not bugs)
 
 - Explicit pull trigger isn't wired to UI yet (pull happens implicitly only).
-- Conflict toast / "Restore my version" action not yet surfaced.
 - Push failures don't show user-visible errors (status dot stays orange forever).
 - No debounced background push — push only on blur / explicit Sync Now.
 - No periodic Drive `changes.list` polling — remote changes only show after relaunch.

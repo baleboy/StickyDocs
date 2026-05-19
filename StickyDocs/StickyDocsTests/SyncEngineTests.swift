@@ -133,6 +133,44 @@ struct SyncEngineTests {
         #expect(loaded.pendingPush == true)
     }
 
+    @Test func pushDivertsToPullWhenRemoteAdvanced() async throws {
+        let (store, backend, engine) = try makeFixture()
+        let sticky = try await engine.createSticky()
+        // Establish a baseline synced state.
+        try engine.updateContent(stickyId: sticky.id, html: "<p>v1</p>")
+        try await engine.push(stickyId: sticky.id)
+        let pushesAfterBaseline = backend.pushCount
+
+        // Remote advances and we make a local edit without pulling first.
+        backend.remoteEdit(docId: "doc-1", html: "<p>their edit</p>")
+        try engine.updateContent(stickyId: sticky.id, html: "<p>my edit</p>")
+
+        try await engine.push(stickyId: sticky.id)
+
+        // Push must NOT have written the local edit; it should have diverted
+        // to pull which stashes local and accepts remote.
+        #expect(backend.pushCount == pushesAfterBaseline)
+        #expect(backend.docs["doc-1"] == "<p>their edit</p>")
+        let loaded = try #require(try store.fetch(id: sticky.id))
+        #expect(loaded.contentHTML == "<p>their edit</p>")
+        #expect(loaded.conflictBackupHTML == "<p>my edit</p>")
+        #expect(loaded.pendingPush == false)
+    }
+
+    @Test func discardBackupClearsBackupWithoutChangingContent() async throws {
+        let (store, backend, engine) = try makeFixture()
+        let sticky = try await engine.createSticky()
+        try engine.updateContent(stickyId: sticky.id, html: "<p>my edit</p>")
+        backend.remoteEdit(docId: "doc-1", html: "<p>their edit</p>")
+        _ = try await engine.pull(stickyId: sticky.id)
+
+        try engine.discardBackup(stickyId: sticky.id)
+        let loaded = try #require(try store.fetch(id: sticky.id))
+        #expect(loaded.contentHTML == "<p>their edit</p>")
+        #expect(loaded.conflictBackupHTML == nil)
+        #expect(loaded.pendingPush == false)
+    }
+
     @Test func deleteWithoutDocOnlySoftDeletes() async throws {
         let (store, backend, engine) = try makeFixture()
         let sticky = try await engine.createSticky()

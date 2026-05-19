@@ -127,6 +127,24 @@ final class SyncEngine {
             return
         }
 
+        // Guard against silently overwriting remote edits: if the Doc's
+        // revisionId advanced since our last sync, divert to pull() so the
+        // conflict path runs (stash local into conflict_backup_html, accept
+        // remote). After pull(), pendingPush is cleared so we don't continue.
+        if sticky.lastRevisionId != nil {
+            let remoteRevisionId: String?
+            do {
+                remoteRevisionId = try await deps.fetchRevisionId(docId)
+            } catch let error as NSError where Self.isMissingDocError(error) {
+                try markUnlinked(&sticky)
+                return
+            }
+            if let remote = remoteRevisionId, remote != sticky.lastRevisionId {
+                _ = try await pull(stickyId: stickyId)
+                return
+            }
+        }
+
         let attributed = HTMLNormalizer.attributedString(from: sticky.contentHTML)
         do {
             try await deps.pushBody(docId, attributed)
@@ -213,6 +231,14 @@ final class SyncEngine {
         sticky.contentHTML = backup
         sticky.conflictBackupHTML = nil
         sticky.pendingPush = true
+        sticky.updatedAt = Date()
+        try store.upsert(sticky)
+    }
+
+    func discardBackup(stickyId: String) throws {
+        guard var sticky = try store.fetch(id: stickyId),
+              sticky.conflictBackupHTML != nil else { return }
+        sticky.conflictBackupHTML = nil
         sticky.updatedAt = Date()
         try store.upsert(sticky)
     }
