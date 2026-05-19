@@ -9,7 +9,8 @@ on macOS.
 
 ## 1. Auth
 
-- [ ] **Cold launch, signed out.** Menu bar extra shows **Sign In with Google...**; "New Sticky" / "Sync Now" / "Open Stickies Folder" disabled. Auth/Harness window shows "Not signed in." (grey).
+- [ ] **Cold launch, signed out.** Menu bar extra shows **Sign In with Google...**; "Sync Now" / "Open Stickies Folder" disabled. **New Sticky stays enabled** (stickies can be created offline). Auth/Harness window shows "Not signed in." (grey).
+- [ ] **Sign-in auto-syncs pending edits.** Signed out, create a sticky and type content (or edit an existing one). Sign in. Without clicking Sync Now, the pending sticky pushes automatically — verify the Doc appears (or updates) in Drive within a few seconds.
 - [ ] **Sign in.** Click **Sign In with Google...** from the menu bar. Browser opens; consent succeeds; lands on `localhost:<port>/...` "Sign-in complete" page. Menu flips to **Sign Out**; harness header turns green "Signed in.". Actions enable.
 - [ ] **Sign out.** Click Sign Out. Menu flips back. Header reverts to "Not signed in.".
 - [ ] **Token persistence.** Sign in. Quit (⌘Q from menu bar extra). Relaunch. App is still signed in (no browser opens). Menu shows Sign Out.
@@ -87,7 +88,7 @@ on macOS.
 
 - [ ] **Icon visible.** Note icon appears in macOS menu bar.
 - [ ] **Actions.** New Sticky (⇧⌘N), Show All Stickies, Sync Now, Open Stickies Folder in Drive, Sign In/Out, Quit StickyDocs (⌘Q).
-- [ ] **Disabled state.** When signed out: New Sticky / Sync Now / Open Folder all disabled.
+- [ ] **Disabled state.** When signed out: Sync Now / Open Folder disabled. New Sticky remains enabled.
 
 ## 12. Persistence
 
