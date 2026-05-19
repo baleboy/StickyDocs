@@ -10,7 +10,6 @@ struct MenuBarContent: View {
             _ = try? AppController.shared.newSticky()
         }
         .keyboardShortcut("n", modifiers: [.command, .shift])
-        .disabled(!auth.isSignedIn)
 
         Button("Show All Stickies") {
             AppController.shared.showAllStickiesPanel()
