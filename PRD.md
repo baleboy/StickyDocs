@@ -243,6 +243,7 @@ Items intentionally deferred but planned:
 
 - **Configurable spellcheck.** Expose a preference to toggle continuous spellchecking (and optionally autocorrect) on the sticky `NSTextView`. Currently both are off by default and not user-adjustable.
 - **Replace loopback OAuth with `ASWebAuthenticationSession`.** Removes the in-process HTTP server (`LoopbackServer.swift`), avoids reliance on the user's default browser and any firewall/port issues, and presents sign-in as an in-app system sheet. PKCE stays; `redirect_uri` switches to a custom scheme (e.g. `com.balenet.stickydocs:/oauth`). Google's policy disallows OAuth in `WKWebView`, so `ASWebAuthenticationSession` is the only supported in-app option.
+- **Near-real-time pull via Drive `changes.list` polling.** Currently the only pull triggers are app launch and "Sync Now"; remote edits don't surface until one of those fires. Replace with a background poller that calls `changes.list` with a saved `pageToken` every ~30s while the app is foregrounded, scoped to the Stickies folder, and invokes `engine.pull` only on stickies whose Doc id appears in the change set. One HTTP call per tick regardless of sticky count, no server-side infrastructure needed. True push (Drive `files.watch` webhooks) would require a public HTTPS endpoint and channel renewal — deferred further out.
 
 ## Further Notes
 
