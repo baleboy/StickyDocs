@@ -1,0 +1,213 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Marketing version (e.g. 1.0.3). If empty, derived from tag or Xcode setting.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+env:
+  XCODE_PROJECT: StickyDocs/StickyDocs.xcodeproj
+  SCHEME: StickyDocs
+  APP_NAME: StickyDocs
+  TEAM_ID: 8HG4D44UZQ
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            V="${{ inputs.version }}"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            V="${GITHUB_REF#refs/tags/v}"
+          else
+            V=""
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Version: $V"
+
+      - name: Write Secrets.swift
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+        run: |
+          if [ -z "$GOOGLE_CLIENT_ID" ] || [ -z "$GOOGLE_CLIENT_SECRET" ]; then
+            echo "::error::GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET secrets are required."
+            exit 1
+          fi
+          cat > StickyDocs/StickyDocs/Secrets.swift <<EOF
+          import Foundation
+
+          enum Secrets {
+              static let googleClientID = "$GOOGLE_CLIENT_ID"
+              static let googleClientSecret = "$GOOGLE_CLIENT_SECRET"
+          }
+          EOF
+
+      - name: Detect signing config
+        id: signing
+        run: |
+          if [ -n "${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}" ] && [ -n "${{ secrets.MACOS_CERTIFICATE_PASSWORD }}" ]; then
+            echo "sign=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "sign=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "${{ secrets.AC_API_KEY_BASE64 }}" ] && [ -n "${{ secrets.AC_API_KEY_ID }}" ] && [ -n "${{ secrets.AC_API_ISSUER_ID }}" ]; then
+            echo "notarize=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "notarize=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Import Developer ID certificate
+        if: steps.signing.outputs.sign == 'true'
+        env:
+          CERT_B64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          CERT_PWD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          KEYCHAIN_PWD="$(openssl rand -base64 24)"
+          echo "$CERT_B64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/cert.p12" -P "$CERT_PWD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PWD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Archive
+        run: |
+          ARCHIVE_PATH="$RUNNER_TEMP/${APP_NAME}.xcarchive"
+          echo "ARCHIVE_PATH=$ARCHIVE_PATH" >> "$GITHUB_ENV"
+          EXTRA=()
+          if [ -n "${{ steps.ver.outputs.version }}" ]; then
+            EXTRA+=("MARKETING_VERSION=${{ steps.ver.outputs.version }}")
+            EXTRA+=("CURRENT_PROJECT_VERSION=${{ github.run_number }}")
+          fi
+          if [ "${{ steps.signing.outputs.sign }}" = "true" ]; then
+            EXTRA+=("CODE_SIGN_STYLE=Manual")
+            EXTRA+=('CODE_SIGN_IDENTITY=Developer ID Application')
+            EXTRA+=("DEVELOPMENT_TEAM=${TEAM_ID}")
+            EXTRA+=("OTHER_CODE_SIGN_FLAGS=--timestamp --options=runtime")
+          else
+            EXTRA+=("CODE_SIGNING_ALLOWED=NO")
+            EXTRA+=("CODE_SIGNING_REQUIRED=NO")
+            EXTRA+=("CODE_SIGN_IDENTITY=")
+          fi
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=macOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            archive \
+            "${EXTRA[@]}"
+
+      - name: Export archive
+        run: |
+          EXPORT_DIR="$RUNNER_TEMP/export"
+          mkdir -p "$EXPORT_DIR"
+          echo "EXPORT_DIR=$EXPORT_DIR" >> "$GITHUB_ENV"
+
+          if [ "${{ steps.signing.outputs.sign }}" = "true" ]; then
+            METHOD="developer-id"
+            STYLE="manual"
+          else
+            METHOD="mac-application"
+            STYLE="automatic"
+          fi
+
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>$METHOD</string>
+            <key>signingStyle</key><string>$STYLE</string>
+            <key>teamID</key><string>${TEAM_ID}</string>
+          </dict>
+          </plist>
+          EOF
+
+          if [ "${{ steps.signing.outputs.sign }}" = "true" ]; then
+            xcodebuild -exportArchive \
+              -archivePath "$ARCHIVE_PATH" \
+              -exportPath "$EXPORT_DIR" \
+              -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+          else
+            # Unsigned: just copy the .app out of the archive
+            cp -R "$ARCHIVE_PATH/Products/Applications/${APP_NAME}.app" "$EXPORT_DIR/"
+          fi
+          ls -la "$EXPORT_DIR"
+
+      - name: Notarize and staple
+        if: steps.signing.outputs.sign == 'true' && steps.signing.outputs.notarize == 'true'
+        env:
+          AC_API_KEY_B64: ${{ secrets.AC_API_KEY_BASE64 }}
+          AC_API_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
+          AC_API_ISSUER_ID: ${{ secrets.AC_API_ISSUER_ID }}
+        run: |
+          KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          echo "$AC_API_KEY_B64" | base64 --decode > "$KEY_PATH"
+
+          APP_PATH="$EXPORT_DIR/${APP_NAME}.app"
+          ZIP_PATH="$RUNNER_TEMP/notarize.zip"
+          ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
+
+          xcrun notarytool submit "$ZIP_PATH" \
+            --key "$KEY_PATH" \
+            --key-id "$AC_API_KEY_ID" \
+            --issuer "$AC_API_ISSUER_ID" \
+            --wait
+
+          xcrun stapler staple "$APP_PATH"
+          xcrun stapler validate "$APP_PATH"
+
+      - name: Package zip
+        id: package
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          if [ -z "$V" ]; then V="dev"; fi
+          OUT="$RUNNER_TEMP/${APP_NAME}-${V}-macOS.zip"
+          ditto -c -k --keepParent "$EXPORT_DIR/${APP_NAME}.app" "$OUT"
+          echo "zip_path=$OUT" >> "$GITHUB_OUTPUT"
+          echo "zip_name=$(basename "$OUT")" >> "$GITHUB_OUTPUT"
+          ls -lh "$OUT"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.zip_name }}
+          path: ${{ steps.package.outputs.zip_path }}
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.package.outputs.zip_path }}
+          draft: false
+          generate_release_notes: true
+
+      - name: Clean up keychain
+        if: always() && steps.signing.outputs.sign == 'true'
+        run: |
+          security delete-keychain "$KEYCHAIN_PATH" || true
