@@ -94,7 +94,19 @@ jobs:
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
+      - name: Write App Store Connect API key
+        if: steps.signing.outputs.notarize == 'true'
+        env:
+          AC_API_KEY_B64: ${{ secrets.AC_API_KEY_BASE64 }}
+        run: |
+          KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          echo "$AC_API_KEY_B64" | base64 --decode > "$KEY_PATH"
+          echo "AC_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+
       - name: Archive
+        env:
+          AC_API_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
+          AC_API_ISSUER_ID: ${{ secrets.AC_API_ISSUER_ID }}
         run: |
           ARCHIVE_PATH="$RUNNER_TEMP/${APP_NAME}.xcarchive"
           echo "ARCHIVE_PATH=$ARCHIVE_PATH" >> "$GITHUB_ENV"
@@ -103,11 +115,19 @@ jobs:
             EXTRA+=("MARKETING_VERSION=${{ steps.ver.outputs.version }}")
             EXTRA+=("CURRENT_PROJECT_VERSION=${{ github.run_number }}")
           fi
+          AUTH_ARGS=()
           if [ "${{ steps.signing.outputs.sign }}" = "true" ]; then
-            EXTRA+=("CODE_SIGN_STYLE=Manual")
-            EXTRA+=('CODE_SIGN_IDENTITY=Developer ID Application')
+            # Automatic signing with the imported cert; xcodebuild will fetch/refresh
+            # a Developer ID provisioning profile via the App Store Connect API key.
+            EXTRA+=("CODE_SIGN_STYLE=Automatic")
             EXTRA+=("DEVELOPMENT_TEAM=${TEAM_ID}")
             EXTRA+=("OTHER_CODE_SIGN_FLAGS=--timestamp --options=runtime")
+            AUTH_ARGS+=("-allowProvisioningUpdates")
+            if [ "${{ steps.signing.outputs.notarize }}" = "true" ]; then
+              AUTH_ARGS+=("-authenticationKeyPath" "$AC_API_KEY_PATH")
+              AUTH_ARGS+=("-authenticationKeyID" "$AC_API_KEY_ID")
+              AUTH_ARGS+=("-authenticationKeyIssuerID" "$AC_API_ISSUER_ID")
+            fi
           else
             EXTRA+=("CODE_SIGNING_ALLOWED=NO")
             EXTRA+=("CODE_SIGNING_REQUIRED=NO")
@@ -119,6 +139,7 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=macOS' \
             -archivePath "$ARCHIVE_PATH" \
+            "${AUTH_ARGS[@]}" \
             archive \
             "${EXTRA[@]}"
 
@@ -129,30 +150,28 @@ jobs:
           echo "EXPORT_DIR=$EXPORT_DIR" >> "$GITHUB_ENV"
 
           if [ "${{ steps.signing.outputs.sign }}" = "true" ]; then
-            METHOD="developer-id"
-            STYLE="manual"
-          else
-            METHOD="mac-application"
-            STYLE="automatic"
-          fi
-
-          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+            cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
-            <key>method</key><string>$METHOD</string>
-            <key>signingStyle</key><string>$STYLE</string>
+            <key>method</key><string>developer-id</string>
+            <key>signingStyle</key><string>automatic</string>
             <key>teamID</key><string>${TEAM_ID}</string>
           </dict>
           </plist>
           EOF
-
-          if [ "${{ steps.signing.outputs.sign }}" = "true" ]; then
+            AUTH_ARGS=("-allowProvisioningUpdates")
+            if [ "${{ steps.signing.outputs.notarize }}" = "true" ]; then
+              AUTH_ARGS+=("-authenticationKeyPath" "$AC_API_KEY_PATH")
+              AUTH_ARGS+=("-authenticationKeyID" "${{ secrets.AC_API_KEY_ID }}")
+              AUTH_ARGS+=("-authenticationKeyIssuerID" "${{ secrets.AC_API_ISSUER_ID }}")
+            fi
             xcodebuild -exportArchive \
               -archivePath "$ARCHIVE_PATH" \
               -exportPath "$EXPORT_DIR" \
-              -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+              -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+              "${AUTH_ARGS[@]}"
           else
             # Unsigned: just copy the .app out of the archive
             cp -R "$ARCHIVE_PATH/Products/Applications/${APP_NAME}.app" "$EXPORT_DIR/"
@@ -162,19 +181,15 @@ jobs:
       - name: Notarize and staple
         if: steps.signing.outputs.sign == 'true' && steps.signing.outputs.notarize == 'true'
         env:
-          AC_API_KEY_B64: ${{ secrets.AC_API_KEY_BASE64 }}
           AC_API_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
           AC_API_ISSUER_ID: ${{ secrets.AC_API_ISSUER_ID }}
         run: |
-          KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
-          echo "$AC_API_KEY_B64" | base64 --decode > "$KEY_PATH"
-
           APP_PATH="$EXPORT_DIR/${APP_NAME}.app"
           ZIP_PATH="$RUNNER_TEMP/notarize.zip"
           ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
 
           xcrun notarytool submit "$ZIP_PATH" \
-            --key "$KEY_PATH" \
+            --key "$AC_API_KEY_PATH" \
             --key-id "$AC_API_KEY_ID" \
             --issuer "$AC_API_ISSUER_ID" \
             --wait
