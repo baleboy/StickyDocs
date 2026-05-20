@@ -165,11 +165,25 @@ jobs:
           ZIP_PATH="$RUNNER_TEMP/notarize.zip"
           ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
 
-          xcrun notarytool submit "$ZIP_PATH" \
+          set +e
+          SUBMIT_OUT=$(xcrun notarytool submit "$ZIP_PATH" \
             --key "$AC_API_KEY_PATH" \
             --key-id "$AC_API_KEY_ID" \
             --issuer "$AC_API_ISSUER_ID" \
-            --wait
+            --wait 2>&1)
+          SUBMIT_RC=$?
+          echo "$SUBMIT_OUT"
+          SUBMISSION_ID=$(echo "$SUBMIT_OUT" | awk '/^  id:/ {print $2; exit}')
+          if [ $SUBMIT_RC -ne 0 ] || echo "$SUBMIT_OUT" | grep -q 'status: Invalid'; then
+            echo "::group::Notarization log for $SUBMISSION_ID"
+            xcrun notarytool log "$SUBMISSION_ID" \
+              --key "$AC_API_KEY_PATH" \
+              --key-id "$AC_API_KEY_ID" \
+              --issuer "$AC_API_ISSUER_ID" || true
+            echo "::endgroup::"
+            exit 1
+          fi
+          set -e
 
           xcrun stapler staple "$APP_PATH"
           xcrun stapler validate "$APP_PATH"
