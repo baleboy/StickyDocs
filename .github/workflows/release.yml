@@ -119,7 +119,10 @@ jobs:
           if [ "${{ steps.signing.outputs.sign }}" = "true" ]; then
             # Automatic signing with the imported cert; xcodebuild will fetch/refresh
             # a Developer ID provisioning profile via the App Store Connect API key.
+            # Pin CODE_SIGN_IDENTITY so xcodebuild uses the imported Developer ID
+            # cert instead of provisioning a fresh Apple Development cert.
             EXTRA+=("CODE_SIGN_STYLE=Automatic")
+            EXTRA+=("CODE_SIGN_IDENTITY=Developer ID Application")
             EXTRA+=("DEVELOPMENT_TEAM=${TEAM_ID}")
             EXTRA+=("OTHER_CODE_SIGN_FLAGS=--timestamp --options=runtime")
             AUTH_ARGS+=("-allowProvisioningUpdates")
@@ -153,6 +156,7 @@ jobs:
           ls -la "$EXPORT_DIR"
           if [ "${{ steps.signing.outputs.sign }}" = "true" ]; then
             codesign --verify --deep --strict --verbose=2 "$EXPORT_DIR/${APP_NAME}.app"
+            codesign -dvv "$EXPORT_DIR/${APP_NAME}.app" 2>&1 | sed 's/^/  /'
           fi
 
       - name: Notarize and staple
