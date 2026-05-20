@@ -104,9 +104,6 @@ jobs:
           echo "AC_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
 
       - name: Archive
-        env:
-          AC_API_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
-          AC_API_ISSUER_ID: ${{ secrets.AC_API_ISSUER_ID }}
         run: |
           ARCHIVE_PATH="$RUNNER_TEMP/${APP_NAME}.xcarchive"
           echo "ARCHIVE_PATH=$ARCHIVE_PATH" >> "$GITHUB_ENV"
@@ -115,49 +112,69 @@ jobs:
             EXTRA+=("MARKETING_VERSION=${{ steps.ver.outputs.version }}")
             EXTRA+=("CURRENT_PROJECT_VERSION=${{ github.run_number }}")
           fi
-          AUTH_ARGS=()
-          if [ "${{ steps.signing.outputs.sign }}" = "true" ]; then
-            # Automatic signing with the imported cert; xcodebuild will fetch/refresh
-            # a Developer ID provisioning profile via the App Store Connect API key.
-            # Pin CODE_SIGN_IDENTITY so xcodebuild uses the imported Developer ID
-            # cert instead of provisioning a fresh Apple Development cert.
-            EXTRA+=("CODE_SIGN_STYLE=Automatic")
-            EXTRA+=("CODE_SIGN_IDENTITY=Developer ID Application")
-            EXTRA+=("DEVELOPMENT_TEAM=${TEAM_ID}")
-            EXTRA+=("OTHER_CODE_SIGN_FLAGS=--timestamp --options=runtime")
-            AUTH_ARGS+=("-allowProvisioningUpdates")
-            if [ "${{ steps.signing.outputs.notarize }}" = "true" ]; then
-              AUTH_ARGS+=("-authenticationKeyPath" "$AC_API_KEY_PATH")
-              AUTH_ARGS+=("-authenticationKeyID" "$AC_API_KEY_ID")
-              AUTH_ARGS+=("-authenticationKeyIssuerID" "$AC_API_ISSUER_ID")
-            fi
-          else
-            EXTRA+=("CODE_SIGNING_ALLOWED=NO")
-            EXTRA+=("CODE_SIGNING_REQUIRED=NO")
-            EXTRA+=("CODE_SIGN_IDENTITY=")
-          fi
+          # Archive unsigned, then sign post-hoc with codesign. This avoids the
+          # Developer ID provisioning profile dance for sandboxed Mac apps.
+          EXTRA+=("CODE_SIGNING_ALLOWED=NO")
+          EXTRA+=("CODE_SIGNING_REQUIRED=NO")
+          EXTRA+=("CODE_SIGN_IDENTITY=")
           xcodebuild \
             -project "$XCODE_PROJECT" \
             -scheme "$SCHEME" \
             -configuration Release \
             -destination 'generic/platform=macOS' \
             -archivePath "$ARCHIVE_PATH" \
-            "${AUTH_ARGS[@]}" \
             archive \
             "${EXTRA[@]}"
 
-      - name: Export archive
+      - name: Export and sign
         run: |
           EXPORT_DIR="$RUNNER_TEMP/export"
           mkdir -p "$EXPORT_DIR"
           echo "EXPORT_DIR=$EXPORT_DIR" >> "$GITHUB_ENV"
 
-          cp -R "$ARCHIVE_PATH/Products/Applications/${APP_NAME}.app" "$EXPORT_DIR/"
-          ls -la "$EXPORT_DIR"
-          if [ "${{ steps.signing.outputs.sign }}" = "true" ]; then
-            codesign --verify --deep --strict --verbose=2 "$EXPORT_DIR/${APP_NAME}.app"
-            codesign -dvv "$EXPORT_DIR/${APP_NAME}.app" 2>&1 | sed 's/^/  /'
+          APP_PATH="$EXPORT_DIR/${APP_NAME}.app"
+          cp -R "$ARCHIVE_PATH/Products/Applications/${APP_NAME}.app" "$APP_PATH"
+
+          if [ "${{ steps.signing.outputs.sign }}" != "true" ]; then
+            ls -la "$EXPORT_DIR"
+            exit 0
           fi
+
+          IDENTITY="Developer ID Application"
+          ENTITLEMENTS="StickyDocs/StickyDocs/StickyDocs.entitlements"
+
+          # Sign inside-out: nested bundles/dylibs first, then helpers, then main.
+          # -depth gives post-order traversal so children are signed before parents.
+          find "$APP_PATH" \
+            \( -name "*.dylib" -o -name "*.framework" -o -name "*.xpc" \
+               -o -name "*.bundle" -o -name "*.app" \) \
+            -depth | while read -r item; do
+            if [ "$item" != "$APP_PATH" ]; then
+              echo "Signing nested: $item"
+              codesign --force --options runtime --timestamp \
+                --sign "$IDENTITY" "$item"
+            fi
+          done
+
+          # Sign any loose Mach-O executables (e.g. Sparkle's Autoupdate helper)
+          # that live outside the main MacOS dir.
+          find "$APP_PATH/Contents" -type f -perm -u+x \
+            ! -path "$APP_PATH/Contents/MacOS/*" | while read -r exe; do
+            if file "$exe" | grep -q "Mach-O"; then
+              echo "Signing helper executable: $exe"
+              codesign --force --options runtime --timestamp \
+                --sign "$IDENTITY" "$exe"
+            fi
+          done
+
+          # Sign the main bundle with entitlements.
+          echo "Signing main bundle: $APP_PATH"
+          codesign --force --options runtime --timestamp \
+            --entitlements "$ENTITLEMENTS" \
+            --sign "$IDENTITY" "$APP_PATH"
+
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          codesign -dvv "$APP_PATH" 2>&1 | sed 's/^/  /'
 
       - name: Notarize and staple
         if: steps.signing.outputs.sign == 'true' && steps.signing.outputs.notarize == 'true'
