@@ -143,6 +143,16 @@ jobs:
           IDENTITY="Developer ID Application"
           ENTITLEMENTS="StickyDocs/StickyDocs/StickyDocs.entitlements"
 
+          # Embed the Developer ID provisioning profile. Required for sandboxed
+          # apps distributed outside the App Store; launchd refuses to spawn
+          # them otherwise (POSIX 153 / spawn failed).
+          PROFILE_B64='${{ secrets.MACOS_PROVISIONING_PROFILE_BASE64 }}'
+          if [ -z "$PROFILE_B64" ]; then
+            echo "::error::MACOS_PROVISIONING_PROFILE_BASE64 secret is required for signed builds."
+            exit 1
+          fi
+          echo "$PROFILE_B64" | base64 --decode > "$APP_PATH/Contents/embedded.provisionprofile"
+
           # Sign inside-out: nested bundles/dylibs first, then helpers, then main.
           # -depth gives post-order traversal so children are signed before parents.
           find "$APP_PATH" \
