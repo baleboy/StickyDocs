@@ -7,9 +7,22 @@ on macOS.
 
 ---
 
+## 0. First-run onboarding
+
+- [ ] **Fresh install — intro appears.** Delete `~/Library/Application Support/StickyDocs/stickies.sqlite` (or use Debug → Reset All Local Data, then relaunch). Launch the app. An onboarding window appears titled "Welcome to StickyDocs" with three bullet points and a **Continue** button.
+- [ ] **Continue → sign-in step.** Click Continue. View flips to "Sign in with Google" with **Skip for now** and **Sign in with Google** buttons.
+- [ ] **Happy path — create new folder.** Click **Sign in with Google**, complete OAuth. View flips to "Choose your Stickies folder" with a text field pre-filled `Stickies`. Click **Finish**. Window closes. Open Drive — a folder named `Stickies` exists. Create a sticky and push — the Doc lands in `Stickies/`.
+- [ ] **Custom folder name.** Repeat fresh install. On the folder step, change name to e.g. `Notes`. Finish. Drive contains a `Notes/` folder; pushed Docs land there.
+- [ ] **Skip for now.** Fresh install. Continue → on sign-in step click **Skip for now**. Window closes. Menu bar: signed-out, **New Sticky** works (creates local-only sticky). No folder created in Drive. Relaunch: onboarding does NOT re-appear.
+- [ ] **Sign-in after skip → folder prompt.** After skipping, sign in via menu bar "Sign In with Google...". A folder-choice window appears (jumps straight to the folder step). Pick `Stickies` and Finish. First push lands in `Stickies/`.
+- [ ] **Close onboarding window mid-flow = skip.** Fresh install. Click the red close button on the intro window. Treated as skip: onboarding does NOT re-appear on relaunch; first push later auto-creates `Stickies/`.
+- [ ] **New Sticky before onboarding finishes.** Fresh install — onboarding window visible. Click menu bar **New Sticky** instead of completing onboarding. Behavior: brings the onboarding window forward (does NOT create a sticky).
+- [ ] **Reset re-triggers onboarding.** Complete onboarding. Run Debug → Reset All Local Data → relaunch. Onboarding window appears again.
+- [ ] **Empty folder name rejected.** On the folder step, clear the text field and click Finish. Error message appears; window stays.
+
 ## 1. Auth
 
-- [ ] **Cold launch, signed out.** Menu bar extra shows **Sign In with Google...**; "Sync Now" / "Open Stickies Folder" disabled. **New Sticky stays enabled** (stickies can be created offline). Auth/Harness window shows "Not signed in." (grey).
+- [ ] **Cold launch, signed out.** Menu bar extra shows **Sign In with Google...**; "Sync Now" / "Open Stickies Folder" disabled. **New Sticky stays enabled** (stickies can be created offline, *once onboarding has been completed or skipped*). Auth/Harness window shows "Not signed in." (grey).
 - [ ] **Sign-in auto-syncs pending edits.** Signed out, create a sticky and type content (or edit an existing one). Sign in. Without clicking Sync Now, the pending sticky pushes automatically — verify the Doc appears (or updates) in Drive within a few seconds.
 - [ ] **Sign in.** Click **Sign In with Google...** from the menu bar. A system sign-in sheet appears in-app (no external browser); consent succeeds; the sheet dismisses itself. Menu flips to **Sign Out**; harness header turns green "Signed in.". Actions enable.
 - [ ] **Sign out.** Click Sign Out. Menu flips back. Header reverts to "Not signed in.".

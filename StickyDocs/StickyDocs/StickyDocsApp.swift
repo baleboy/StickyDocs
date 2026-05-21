@@ -13,6 +13,7 @@ struct StickyDocsApp: App {
         Window("StickyDocs", id: "main") {
             ContentView()
                 .task {
+                    AppController.shared.presentOnboardingIfNeeded()
                     try? AppController.shared.restoreOpenStickies()
                     await AppController.shared.pullAllFromDrive()
                 }

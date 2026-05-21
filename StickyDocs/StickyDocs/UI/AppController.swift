@@ -15,7 +15,11 @@ final class AppController: ObservableObject {
     // Sticky ids currently being pulled from Drive. UI observes this to show
     // a spinner in place of the status dot.
     @Published private(set) var syncingStickyIds: Set<String> = []
+    @Published private(set) var isOnboardingComplete: Bool = false
     private var authCancellable: AnyCancellable?
+    private let driveClient: GoogleDriveClient
+    private let folderIdCache: FolderIdCache
+    let onboarding = OnboardingController()
 
     private init() {
         do {
@@ -26,6 +30,8 @@ final class AppController: ObservableObject {
         let driveClient = GoogleDriveClient(accessToken: { try await AuthService.shared.accessToken() })
         let docsClient = GoogleDocsClient(accessToken: { try await AuthService.shared.accessToken() })
         let folderIdCache = FolderIdCache(store: store, drive: driveClient)
+        self.driveClient = driveClient
+        self.folderIdCache = folderIdCache
 
         let deps = SyncEngine.Dependencies(
             createDoc: { title in
@@ -49,16 +55,51 @@ final class AppController: ObservableObject {
             self?.isTerminating = true
         }
 
+        self.isOnboardingComplete = (try? store.getAppState(key: OnboardingKeys.complete)) == "1"
+
         // Trigger a sync whenever auth transitions from signed-out to signed-in,
         // so edits made while logged out are pushed (and remote changes pulled)
-        // without requiring the user to invoke Sync Now.
+        // without requiring the user to invoke Sync Now. Also, if the user
+        // skipped onboarding and is signing in for the first time, prompt them
+        // to choose a Stickies folder before the first push.
         authCancellable = AuthService.shared.$isSignedIn
             .removeDuplicates()
             .dropFirst()
             .sink { [weak self] signedIn in
                 guard signedIn else { return }
-                Task { @MainActor in await self?.syncNow() }
+                Task { @MainActor in
+                    self?.presentFolderChoiceIfNeeded()
+                    await self?.syncNow()
+                }
             }
+    }
+
+    // MARK: - Onboarding
+
+    private var hasFolderConfigured: Bool {
+        if let stored = try? store.getAppState(key: OnboardingKeys.folderId), !stored.isEmpty {
+            return true
+        }
+        return false
+    }
+
+    func presentOnboardingIfNeeded() {
+        guard !isOnboardingComplete else { return }
+        onboarding.present(startAt: .intro)
+    }
+
+    func presentFolderChoiceIfNeeded() {
+        guard AuthService.shared.isSignedIn, !hasFolderConfigured else { return }
+        onboarding.present(startAt: .chooseFolder)
+    }
+
+    func completeOnboarding(folderName: String) async throws {
+        let id = try await driveClient.findOrCreateFolder(named: folderName)
+        try store.setAppState(key: OnboardingKeys.folderId, value: id)
+        try store.setAppState(key: OnboardingKeys.folderName, value: folderName)
+        try store.setAppState(key: OnboardingKeys.complete, value: "1")
+        folderIdCache.refreshFromStore()
+        isOnboardingComplete = true
     }
 
     func newSticky() throws -> Sticky {
@@ -169,6 +210,13 @@ final class AppController: ObservableObject {
         allStickiesWindow = nil
         try? store.wipeAll()
         try? AuthService.shared.signOut()
+        folderIdCache.invalidate()
+        isOnboardingComplete = false
+    }
+
+    func markOnboardingComplete() {
+        try? store.setAppState(key: OnboardingKeys.complete, value: "1")
+        isOnboardingComplete = true
     }
 
     func openStickiesFolderInBrowser() {
@@ -182,9 +230,8 @@ final class AppController: ObservableObject {
 }
 
 @MainActor
-private final class FolderIdCache {
-    private static let storeKey = "stickies_folder_id"
-    private static let folderName = "Stickies"
+final class FolderIdCache {
+    private static let defaultFolderName = "Stickies"
 
     private let store: StickyStore
     private let drive: GoogleDriveClient
@@ -193,14 +240,29 @@ private final class FolderIdCache {
     init(store: StickyStore, drive: GoogleDriveClient) {
         self.store = store
         self.drive = drive
-        self.cached = try? store.getAppState(key: Self.storeKey)
+        self.cached = try? store.getAppState(key: OnboardingKeys.folderId)
     }
 
     func id() async throws -> String {
         if let cached { return cached }
-        let id = try await drive.findOrCreateFolder(named: Self.folderName)
+        // The store may have been written to since init (e.g. onboarding just
+        // finished). Re-check before falling back to network creation.
+        if let stored = try? store.getAppState(key: OnboardingKeys.folderId), !stored.isEmpty {
+            cached = stored
+            return stored
+        }
+        let name = (try? store.getAppState(key: OnboardingKeys.folderName)) ?? Self.defaultFolderName
+        let id = try await drive.findOrCreateFolder(named: name)
         cached = id
-        try? store.setAppState(key: Self.storeKey, value: id)
+        try? store.setAppState(key: OnboardingKeys.folderId, value: id)
         return id
+    }
+
+    func refreshFromStore() {
+        cached = try? store.getAppState(key: OnboardingKeys.folderId)
+    }
+
+    func invalidate() {
+        cached = nil
     }
 }

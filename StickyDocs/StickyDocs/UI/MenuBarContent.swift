@@ -4,10 +4,15 @@ import AppKit
 struct MenuBarContent: View {
     @ObservedObject private var auth = AuthService.shared
     @ObservedObject private var debug = DebugSettings.shared
+    @ObservedObject private var app = AppController.shared
 
     var body: some View {
         Button("New Sticky") {
-            _ = try? AppController.shared.newSticky()
+            if app.isOnboardingComplete {
+                _ = try? AppController.shared.newSticky()
+            } else {
+                AppController.shared.presentOnboardingIfNeeded()
+            }
         }
         .keyboardShortcut("n", modifiers: [.command, .shift])
 
