@@ -30,7 +30,7 @@ xcodebuild -project StickyDocs/StickyDocs.xcodeproj -scheme StickyDocs \
 
 ## Secrets
 
-`StickyDocs/StickyDocs/Auth/Secrets.swift` is gitignored. To bring up a fresh checkout, copy `Secrets.example.swift` content into `Secrets.swift` and fill in a Google Cloud OAuth client (Desktop app type) with Drive + Docs APIs enabled. The committed `Secrets.swift` is a stub; the example file's body is commented out so both can coexist without a duplicate `Secrets` enum.
+`StickyDocs/StickyDocs/Auth/Secrets.swift` is gitignored. To bring up a fresh checkout, copy `Secrets.example.swift` content into `Secrets.swift` and fill in a Google Cloud OAuth client (**iOS app type**, bundle id `com.baleware.StickyDocs`) with Drive + Docs APIs enabled. Leave `googleClientSecret` as an empty string — iOS clients are public and PKCE-only. The committed `Secrets.swift` is a stub; the example file's body is commented out so both can coexist without a duplicate `Secrets` enum.
 
 ## Architecture
 
@@ -62,7 +62,7 @@ There is **no debounced background sync, no polling, no timer.** Push happens on
 
 **Dependency injection at the network boundary.** `SyncEngine.Dependencies` is a struct of closures (`createDoc`, `exportAsHTML`, `pushBody`, etc.) wired up once in `AppController.init`. Tests substitute fakes — see `SyncEngineTests.swift` and `RoundTripIntegrationTests.swift`. Don't make `SyncEngine` reach into `GoogleDocsClient`/`GoogleDriveClient` directly.
 
-**Auth.** `AuthService` does OAuth via a loopback redirect (`LoopbackServer` runs an in-process HTTP server on a random port) with PKCE. Tokens live in the Keychain via `KeychainStore`. Access tokens are refreshed lazily inside `accessToken()`.
+**Auth.** `AuthService` does OAuth via `ASWebAuthenticationSession` with PKCE. The callback URL scheme is derived from `Secrets.googleClientID` (reverse-DNS to `com.googleusercontent.apps.<prefix>`) and the redirect URI is `<scheme>:/oauth2redirect`. Tokens live in the Keychain via `KeychainStore`. Access tokens are refreshed lazily inside `accessToken()`. The OAuth client in Google Cloud Console must be **iOS type** (which supports the custom-scheme redirect); a Desktop client will reject the redirect URI.
 
 ## Conventions worth knowing
 

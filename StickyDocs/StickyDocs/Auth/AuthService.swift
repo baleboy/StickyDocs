@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import AuthenticationServices
 import Combine
 
 @MainActor
@@ -10,6 +11,8 @@ final class AuthService: ObservableObject {
         case noAuthCode(String)
         case tokenExchangeFailed(String)
         case notSignedIn
+        case malformedClientID
+        case sessionStartFailed
 
         var errorDescription: String? {
             switch self {
@@ -17,6 +20,8 @@ final class AuthService: ObservableObject {
             case .noAuthCode(let desc): return "No auth code received: \(desc)"
             case .tokenExchangeFailed(let body): return "Token exchange failed: \(body)"
             case .notSignedIn: return "Not signed in"
+            case .malformedClientID: return "Secrets.googleClientID is not in the expected *.apps.googleusercontent.com form"
+            case .sessionStartFailed: return "Could not start the web authentication session"
             }
         }
     }
@@ -30,6 +35,7 @@ final class AuthService: ObservableObject {
     private let scope = "https://www.googleapis.com/auth/drive.file"
 
     private var cachedTokens: OAuthTokens?
+    private let presentationProvider = WebAuthPresentationProvider()
 
     private init() {
         refreshSignedInState()
@@ -63,14 +69,12 @@ final class AuthService: ObservableObject {
     }
 
     func signIn() async throws -> OAuthTokens {
-        let server = LoopbackServer()
-        let port = try await server.start()
-        defer { server.stop() }
+        let callbackScheme = try callbackURLScheme(from: Secrets.googleClientID)
+        let redirectURI = "\(callbackScheme):/oauth2redirect"
 
         let verifier = PKCE.generateVerifier()
         let challenge = PKCE.challenge(for: verifier)
         let expectedState = UUID().uuidString
-        let redirectURI = "http://localhost:\(port)"
 
         var comps = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth")!
         comps.queryItems = [
@@ -84,10 +88,11 @@ final class AuthService: ObservableObject {
             .init(name: "access_type", value: "offline"),
             .init(name: "prompt", value: "consent")
         ]
-        NSWorkspace.shared.open(comps.url!)
+        let authURL = comps.url!
 
-        let params = try await server.waitForRequest()
+        let callbackURL = try await runWebAuthSession(url: authURL, scheme: callbackScheme)
 
+        let params = parseQuery(from: callbackURL)
         if let err = params["error"] {
             throw AuthError.noAuthCode(err)
         }
@@ -99,16 +104,58 @@ final class AuthService: ObservableObject {
         return tokens
     }
 
+    private func runWebAuthSession(url: URL, scheme: String) async throws -> URL {
+        try await withCheckedThrowingContinuation { cont in
+            let session = ASWebAuthenticationSession(
+                url: url,
+                callbackURLScheme: scheme
+            ) { callback, error in
+                if let error {
+                    cont.resume(throwing: error)
+                } else if let callback {
+                    cont.resume(returning: callback)
+                } else {
+                    cont.resume(throwing: AuthError.sessionStartFailed)
+                }
+            }
+            session.presentationContextProvider = presentationProvider
+            session.prefersEphemeralWebBrowserSession = false
+            if !session.start() {
+                cont.resume(throwing: AuthError.sessionStartFailed)
+            }
+        }
+    }
+
+    private func callbackURLScheme(from clientID: String) throws -> String {
+        let suffix = ".apps.googleusercontent.com"
+        guard clientID.hasSuffix(suffix) else { throw AuthError.malformedClientID }
+        let prefix = String(clientID.dropLast(suffix.count))
+        guard !prefix.isEmpty else { throw AuthError.malformedClientID }
+        return "com.googleusercontent.apps.\(prefix)"
+    }
+
+    private func parseQuery(from url: URL) -> [String: String] {
+        guard let comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return [:] }
+        var out: [String: String] = [:]
+        for item in comps.queryItems ?? [] {
+            out[item.name] = item.value ?? ""
+        }
+        return out
+    }
+
     private func exchange(code: String, verifier: String, redirectURI: String) async throws -> OAuthTokens {
-        var body = URLComponents()
-        body.queryItems = [
+        var items: [URLQueryItem] = [
             .init(name: "code", value: code),
             .init(name: "client_id", value: Secrets.googleClientID),
-            .init(name: "client_secret", value: Secrets.googleClientSecret),
             .init(name: "redirect_uri", value: redirectURI),
             .init(name: "grant_type", value: "authorization_code"),
             .init(name: "code_verifier", value: verifier)
         ]
+        if !Secrets.googleClientSecret.isEmpty {
+            items.append(.init(name: "client_secret", value: Secrets.googleClientSecret))
+        }
+        var body = URLComponents()
+        body.queryItems = items
         var req = URLRequest(url: URL(string: "https://oauth2.googleapis.com/token")!)
         req.httpMethod = "POST"
         req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
@@ -128,13 +175,16 @@ final class AuthService: ObservableObject {
     }
 
     func refresh(using refreshToken: String) async throws -> OAuthTokens {
-        var body = URLComponents()
-        body.queryItems = [
+        var items: [URLQueryItem] = [
             .init(name: "client_id", value: Secrets.googleClientID),
-            .init(name: "client_secret", value: Secrets.googleClientSecret),
             .init(name: "refresh_token", value: refreshToken),
             .init(name: "grant_type", value: "refresh_token")
         ]
+        if !Secrets.googleClientSecret.isEmpty {
+            items.append(.init(name: "client_secret", value: Secrets.googleClientSecret))
+        }
+        var body = URLComponents()
+        body.queryItems = items
         var req = URLRequest(url: URL(string: "https://oauth2.googleapis.com/token")!)
         req.httpMethod = "POST"
         req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
@@ -166,5 +216,11 @@ final class AuthService: ObservableObject {
         let expires_in: Int
         let scope: String?
         let token_type: String
+    }
+}
+
+private final class WebAuthPresentationProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        NSApplication.shared.keyWindow ?? NSApplication.shared.windows.first ?? ASPresentationAnchor()
     }
 }
