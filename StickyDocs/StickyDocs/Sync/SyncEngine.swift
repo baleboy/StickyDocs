@@ -29,9 +29,30 @@ final class SyncEngine {
     let store: StickyStore
     let deps: Dependencies
 
+    // Per-sticky debounce timers for push-while-typing. Each new edit cancels
+    // the prior pending task and starts a fresh one; blur/close cancels and
+    // flushes immediately.
+    private var debouncedPushTasks: [String: Task<Void, Never>] = [:]
+    static let typingDebounce: Duration = .milliseconds(1500)
+
     init(store: StickyStore, deps: Dependencies) {
         self.store = store
         self.deps = deps
+    }
+
+    func schedulePush(stickyId: String) {
+        debouncedPushTasks[stickyId]?.cancel()
+        debouncedPushTasks[stickyId] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.typingDebounce)
+            guard !Task.isCancelled, let self else { return }
+            self.debouncedPushTasks[stickyId] = nil
+            try? await self.push(stickyId: stickyId)
+        }
+    }
+
+    func cancelDebouncedPush(stickyId: String) {
+        debouncedPushTasks[stickyId]?.cancel()
+        debouncedPushTasks[stickyId] = nil
     }
 
     // MARK: - Operations
@@ -98,6 +119,7 @@ final class SyncEngine {
         sticky.pendingPush = true
         sticky.updatedAt = Date()
         try store.upsert(sticky)
+        schedulePush(stickyId: stickyId)
     }
 
     func push(stickyId: String) async throws {
@@ -140,8 +162,15 @@ final class SyncEngine {
                 return
             }
             if let remote = remoteRevisionId, remote != sticky.lastRevisionId {
-                _ = try await pull(stickyId: stickyId)
-                return
+                let outcome = try await pull(stickyId: stickyId)
+                // If pull found a real remote change (or conflict), it has
+                // taken over local state and cleared pendingPush; stop here.
+                // Otherwise the revision bump was content-neutral and we
+                // continue with our push using the refreshed lastRevisionId.
+                guard outcome == .unchanged,
+                      let refreshed = try store.fetch(id: stickyId) else { return }
+                sticky = refreshed
+                guard sticky.pendingPush else { return }
             }
         }
 
@@ -206,6 +235,17 @@ final class SyncEngine {
         let pulledHTML = try await deps.exportAsHTML(docId)
         let pulledAttr = HTMLNormalizer.attributedString(from: pulledHTML)
         let canonicalRemote = HTMLNormalizer.html(from: pulledAttr)
+
+        // Google Docs advances revisionId on events that don't change content
+        // (e.g. opening the Doc in a browser creates a viewing revision). If
+        // the remote canonical HTML matches what we last synced, this is a
+        // no-op bump: track the new revisionId and report unchanged so any
+        // pending local push can proceed without a spurious conflict.
+        if canonicalRemote == (sticky.lastSyncedHTML ?? "") {
+            sticky.lastRevisionId = remoteRevisionId
+            try store.upsert(sticky)
+            return .unchanged
+        }
 
         let isLocalDirty = sticky.pendingPush && sticky.contentHTML != (sticky.lastSyncedHTML ?? "")
         let outcome: PullOutcome

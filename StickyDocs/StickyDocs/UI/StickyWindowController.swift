@@ -133,6 +133,7 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
     private func flushPendingPush() {
         let id = stickyId
         let engine = engine
+        engine.cancelDebouncedPush(stickyId: id)
         let previous = pushTask
         pushTask = Task { @MainActor in
             await previous?.value
