@@ -42,13 +42,14 @@ Menu-bar macOS app (`MenuBarExtra` + a hidden main `Window`). Each sticky is a b
 NSTextView edit
   → StickyContentView.onChange
   → SyncEngine.updateContent (writes HTML + pending_push=true to StickyStore)
+  → SyncEngine.schedulePush (cancels prior debounce Task, starts a new 1.5s one)
   → GRDB ValueObservation → StickyViewModel republishes
 windowDidResignKey / windowWillClose
-  → StickyWindowController.flushPendingPush
+  → StickyWindowController.flushPendingPush (cancels debounce, pushes now)
   → SyncEngine.push → GoogleDocsClient.replaceDocumentBody
 ```
 
-There is **no debounced background sync, no polling, no timer.** Push happens only on blur, on close, or via explicit "Sync Now" (menu bar / sticky context menu). This is intentional for v1 — see the comment at the top of `SyncEngine.swift` listing deferred work.
+Push triggers: a **1.5s per-sticky debounce after each keystroke** (`SyncEngine.typingDebounce`), **immediate flush on blur and close** (which also cancels the pending debounce task), and explicit **Sync Now** (menu bar / sticky context menu). There is no `changes.list` polling, no network reachability monitor, and no exponential backoff — see the comment at the top of `SyncEngine.swift` for what's still deferred.
 
 **Lazy Doc provisioning.** `createLocalSticky` never touches the network. `push()` provisions a Drive Doc on the first push *only if* the sticky has non-whitespace content (so empty discarded stickies leave no Drive litter). Once provisioned, `googleDocId` is set and the sticky's `syncStatus` transitions `unprovisioned → pending → synced`.
 
