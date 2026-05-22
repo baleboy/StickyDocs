@@ -23,6 +23,10 @@ final class SyncEngine {
         var deleteDoc: (_ docId: String) async throws -> Void
         var ensureStickiesFolder: () async throws -> Void = {}
         var isTrashed: (_ docId: String) async throws -> Bool = { _ in false }
+        // Cross-machine restore: returns (docId, title) for every Doc this
+        // OAuth client previously tagged with stickydocs=v1. Default returns
+        // empty so unit tests don't need to mock discovery.
+        var listTaggedStickies: () async throws -> [(id: String, name: String)] = { [] }
     }
 
     let store: StickyStore
@@ -110,6 +114,50 @@ final class SyncEngine {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd HH:mm"
         return "Sticky \(f.string(from: Date()))"
+    }
+
+    // Cross-machine restore: pull in every Doc this OAuth client previously
+    // tagged that isn't already in the local store. Idempotent — second call
+    // is a no-op once everything is imported. Imported stickies land with
+    // isOpen=false so a fresh install doesn't spawn N floating windows; the
+    // user can selectively reopen them from All Stickies.
+    func discoverRemoteStickies() async throws -> Int {
+        let docs = try await deps.listTaggedStickies()
+        var imported = 0
+        for doc in docs {
+            if try store.fetchByDocId(doc.id) != nil { continue }
+            let html = try await deps.exportAsHTML(doc.id)
+            let canonical = HTMLNormalizer.html(from: HTMLNormalizer.attributedString(from: html))
+            let revisionId = try? await deps.fetchRevisionId(doc.id)
+            let frame = StickyPlacement.nextFrame()
+            let now = Date()
+            let sticky = Sticky(
+                id: UUID().uuidString,
+                googleDocId: doc.id,
+                title: doc.name,
+                contentHTML: canonical,
+                lastSyncedHTML: canonical,
+                conflictBackupHTML: nil,
+                lastRevisionId: revisionId,
+                frameX: Double(frame.origin.x),
+                frameY: Double(frame.origin.y),
+                frameW: Double(frame.size.width),
+                frameH: Double(frame.size.height),
+                color: "yellow",
+                collapsed: false,
+                createdAt: now,
+                updatedAt: now,
+                lastSyncedAt: now,
+                pendingPush: false,
+                deletedLocally: false,
+                isOpen: false,
+                lastPushErrorMessage: nil,
+                lastPushErrorAt: nil
+            )
+            try store.upsert(sticky)
+            imported += 1
+        }
+        return imported
     }
 
     func updateContent(stickyId: String, html: String) throws {

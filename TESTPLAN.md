@@ -133,6 +133,8 @@ on macOS.
 - [ ] **Very long sticky.** Type ~2,000 chars including formatting. Push. Open Doc in browser — content intact. Pull on relaunch — content intact.
 - [ ] **Many stickies.** Create 20 stickies. All restore on relaunch. All Stickies panel renders without lag.
 - [ ] **Doc deleted in Drive UI.** Trash a sticky's Doc in Drive. Trigger a push from app on that sticky. Expected: push detects the 404, status flips to **unlinked** (red dot, tooltip "Doc was deleted in Drive"). Right-click → "Re-create Doc in Drive" provisions a fresh Doc with current content.
+- [ ] **Cross-machine restore.** Install the app on a second Mac, sign in with the same Google account, finish onboarding. After the first `Sync Now` (or the automatic sign-in sync), every sticky from the first Mac appears in the All Stickies panel. Stickies are imported with `isOpen=false` so no floating windows pop up uninvited — click a row to open one. Verify content matches the Doc in Drive. Console log shows `Discovered N sticky/stickies from Drive`.
+- [ ] **Idempotent discovery.** Click Sync Now again. No duplicate stickies appear. Console doesn't log a second "Discovered" line (or logs 0).
 
 ## 15. Auth/round-trip harness window (DEBUG builds only)
 

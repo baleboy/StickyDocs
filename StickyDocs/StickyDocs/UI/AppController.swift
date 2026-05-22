@@ -46,7 +46,11 @@ final class AppController: ObservableObject {
             pushBody: { docId, content in try await docsClient.replaceDocumentBody(docId: docId, with: content) },
             deleteDoc: { try await driveClient.deleteFile(id: $0) },
             ensureStickiesFolder: { _ = try await folderIdCache.id() },
-            isTrashed: { try await driveClient.isTrashed(docId: $0) }
+            isTrashed: { try await driveClient.isTrashed(docId: $0) },
+            listTaggedStickies: {
+                let files = try await driveClient.listTaggedStickies()
+                return files.map { ($0.id, $0.name) }
+            }
         )
         self.engine = SyncEngine(store: store, deps: deps)
 
@@ -195,12 +199,21 @@ final class AppController: ObservableObject {
         }
     }
 
-    // Sync Now: pull first so remote edits land before we push any local
-    // pending. If pull picks up a remote change for a sticky that also had
-    // a pending local edit, the conflict path stashes local into
-    // conflict_backup_html and pendingPush is cleared - so the subsequent
-    // push pass simply skips it.
+    // Sync Now: discover stickies created on other machines, then pull remote
+    // edits before pushing any local pending. If pull picks up a remote change
+    // for a sticky that also had a pending local edit, the conflict path
+    // stashes local into conflict_backup_html and pendingPush is cleared - so
+    // the subsequent push pass simply skips it.
     func syncNow() async {
+        guard AuthService.shared.isSignedIn else { return }
+        do {
+            let imported = try await engine.discoverRemoteStickies()
+            if imported > 0 {
+                NSLog("[StickyDocs] Discovered \(imported) sticky/stickies from Drive (cross-machine restore)")
+            }
+        } catch {
+            NSLog("[StickyDocs] discoverRemoteStickies failed: \(error)")
+        }
         await pullAllFromDrive()
         await syncAllPending()
     }
