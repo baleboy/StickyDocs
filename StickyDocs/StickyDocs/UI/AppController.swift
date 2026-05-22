@@ -2,6 +2,7 @@ import Foundation
 import AppKit
 import SwiftUI
 import Combine
+import Network
 
 @MainActor
 final class AppController: ObservableObject {
@@ -20,6 +21,8 @@ final class AppController: ObservableObject {
     private let driveClient: GoogleDriveClient
     private let folderIdCache: FolderIdCache
     let onboarding = OnboardingController()
+    private let pathMonitor = NWPathMonitor()
+    private var lastPathStatus: NWPath.Status?
 
     private init() {
         do {
@@ -72,6 +75,27 @@ final class AppController: ObservableObject {
                     await self?.syncNow()
                 }
             }
+
+        startNetworkMonitor()
+    }
+
+    // Flush pending pushes when network comes back. The first emission carries
+    // the current status, which is .satisfied on a normal launch — without the
+    // transition check we'd double-sync against the launch-time pull. We only
+    // fire when the previous observation was .unsatisfied, which is a real
+    // offline→online edge.
+    private func startNetworkMonitor() {
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let previous = self.lastPathStatus
+                self.lastPathStatus = path.status
+                guard previous == .unsatisfied, path.status == .satisfied else { return }
+                NSLog("[StickyDocs] network reachable again, triggering syncNow")
+                await self.syncNow()
+            }
+        }
+        pathMonitor.start(queue: DispatchQueue.global(qos: .utility))
     }
 
     // MARK: - Onboarding

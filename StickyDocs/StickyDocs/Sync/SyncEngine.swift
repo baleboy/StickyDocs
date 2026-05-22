@@ -11,8 +11,7 @@ import AppKit
 //     stash local into conflict_backup_html and accept remote
 //   - delete: soft-delete locally; optionally also trash the Doc
 //
-// Deferred (v2+): changes.list polling, network state monitoring, exponential
-// backoff, conflict toast event stream.
+// Deferred (v2+): changes.list polling, exponential backoff.
 @MainActor
 final class SyncEngine {
 

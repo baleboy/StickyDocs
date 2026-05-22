@@ -49,7 +49,7 @@ windowDidResignKey / windowWillClose
   → SyncEngine.push → GoogleDocsClient.replaceDocumentBody
 ```
 
-Push triggers: a **1.5s per-sticky debounce after each keystroke** (`SyncEngine.typingDebounce`), **immediate flush on blur and close** (which also cancels the pending debounce task), and explicit **Sync Now** (menu bar / sticky context menu). There is no `changes.list` polling, no network reachability monitor, and no exponential backoff — see the comment at the top of `SyncEngine.swift` for what's still deferred.
+Push triggers: a **1.5s per-sticky debounce after each keystroke** (`SyncEngine.typingDebounce`), **immediate flush on blur and close** (which also cancels the pending debounce task), explicit **Sync Now** (menu bar / sticky context menu), the **post-sign-in transition** (`authCancellable` in `AppController`), and an **offline→online network transition** (`NWPathMonitor` in `AppController`, fires `syncNow()`). There is no `changes.list` polling and no exponential backoff — see the comment at the top of `SyncEngine.swift` for what's still deferred.
 
 **Lazy Doc provisioning.** `createLocalSticky` never touches the network. `push()` provisions a Drive Doc on the first push *only if* the sticky has non-whitespace content (so empty discarded stickies leave no Drive litter). Once provisioned, `googleDocId` is set and the sticky's `syncStatus` transitions `unprovisioned → pending → synced`.
 
