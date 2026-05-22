@@ -99,7 +99,12 @@ final class AuthService: ObservableObject {
             .init(name: "code_challenge_method", value: "S256"),
             .init(name: "state", value: expectedState),
             .init(name: "access_type", value: "offline"),
-            .init(name: "prompt", value: "consent")
+            // select_account forces Google to show the account picker even when
+            // the system browser already has a session cookie — otherwise users
+            // with multiple Google accounts (work / personal) get silently
+            // signed in with whichever one Safari knows about. consent is kept
+            // so that re-auth after a revocation reissues a refresh token.
+            .init(name: "prompt", value: "select_account consent")
         ]
         let authURL = comps.url!
 
