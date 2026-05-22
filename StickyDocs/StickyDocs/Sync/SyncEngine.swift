@@ -126,12 +126,41 @@ final class SyncEngine {
             try await pushInner(stickyId: stickyId)
         } catch {
             // Persist the failure so the sticky's status dot turns red with a
-            // tooltip explaining what went wrong. pendingPush stays true so a
+            // banner explaining what went wrong. pendingPush stays true so a
             // subsequent blur, debounce, or Sync Now retries automatically.
-            try? recordPushError(stickyId: stickyId, error: error)
+            //
+            // If Google rejected our token with a 401 (grant revoked while the
+            // cached access token was still within its lifetime, so refresh
+            // never ran), treat it as a sign-out: clear the keychain entry so
+            // the menu bar flips to "Sign In with Google..." and persist the
+            // canonical "Not signed in" message so the banner switches to the
+            // blue Sign In variant.
+            if Self.isAuthError(error) {
+                try? AuthService.shared.signOut()
+                try? recordPushError(stickyId: stickyId, error: Self.notSignedInError)
+            } else {
+                try? recordPushError(stickyId: stickyId, error: error)
+            }
             throw error
         }
     }
+
+    private static func isAuthError(_ error: Error) -> Bool {
+        let ns = error as NSError
+        if ns.domain == "GoogleDocs" || ns.domain == "GoogleDrive" {
+            return ns.code == 401 || ns.code == 403
+        }
+        // AuthService.AuthError.notSignedIn surfaces as the same NSError shape
+        // after bridging via localizedDescription; matching by message keeps the
+        // engine free of an AuthService dependency for this comparison.
+        return ns.localizedDescription == "Not signed in"
+    }
+
+    private static let notSignedInError = NSError(
+        domain: "StickyDocsAuth",
+        code: 401,
+        userInfo: [NSLocalizedDescriptionKey: "Not signed in"]
+    )
 
     private func pushInner(stickyId: String) async throws {
         guard var sticky = try store.fetch(id: stickyId) else { return }
