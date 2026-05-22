@@ -222,6 +222,8 @@ final class AppController: ObservableObject {
         if allStickiesWindow == nil {
             let hosting = NSHostingController(rootView: AllStickiesView(store: store) { [weak self] sticky in
                 self?.showWindow(for: sticky)
+            } onNewSticky: { [weak self] in
+                _ = try? self?.newSticky()
             })
             let window = NSWindow(contentViewController: hosting)
             window.title = "All Stickies"

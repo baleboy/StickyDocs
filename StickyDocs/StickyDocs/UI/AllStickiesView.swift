@@ -32,10 +32,12 @@ final class AllStickiesViewModel: ObservableObject {
 struct AllStickiesView: View {
     @StateObject private var viewModel: AllStickiesViewModel
     let onSelect: (Sticky) -> Void
+    let onNewSticky: () -> Void
 
-    init(store: StickyStore, onSelect: @escaping (Sticky) -> Void) {
+    init(store: StickyStore, onSelect: @escaping (Sticky) -> Void, onNewSticky: @escaping () -> Void) {
         _viewModel = StateObject(wrappedValue: AllStickiesViewModel(store: store))
         self.onSelect = onSelect
+        self.onNewSticky = onNewSticky
     }
 
     var body: some View {
@@ -45,6 +47,10 @@ struct AllStickiesView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
+                Button(action: onNewSticky) {
+                    Label("New", systemImage: "plus")
+                }
+                .help("New sticky (⇧⌘N)")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)

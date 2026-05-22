@@ -53,4 +53,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await AppController.shared.pullAllFromDrive()
         }
     }
+
+    // Dock-icon fallback: in Release builds we hide the debug Window, so if
+    // the user's menu bar is full (notched Macs with corporate tooling are
+    // notorious) and the MenuBarExtra icon doesn't fit, they have no way to
+    // reach the app. Clicking the dock icon now opens the All Stickies panel,
+    // which has its own New Sticky button.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            Task { @MainActor in
+                AppController.shared.showAllStickiesPanel()
+            }
+        }
+        return true
+    }
 }
