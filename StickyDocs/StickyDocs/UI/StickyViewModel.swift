@@ -79,8 +79,15 @@ final class StickyViewModel: ObservableObject {
     }
 
     func restoreBackup() {
-        try? engine.restoreBackup(stickyId: sticky.id)
-        reload()
+        // The engine restores the backup into contentHTML and marks
+        // pendingPush=true but doesn't push. The banner button needs to fully
+        // round-trip — i.e. the user clicks Restore and the Doc in Drive
+        // matches again — so push immediately afterwards.
+        Task {
+            try? engine.restoreBackup(stickyId: sticky.id)
+            try? await engine.push(stickyId: sticky.id)
+            reload()
+        }
     }
 
     func discardBackup() {
