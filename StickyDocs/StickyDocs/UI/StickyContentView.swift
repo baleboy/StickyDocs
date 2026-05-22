@@ -85,7 +85,10 @@ struct StickyContentView: View {
                     .help("Remote version replaced your unsynced edits. Right-click to restore or discard your backup.")
             }
         }
-        .overlay(alignment: .bottomTrailing) {
+        .overlay(alignment: .bottomLeading) {
+            // Bottom-left, not bottom-right: the bottom-right corner is the
+            // window's resize handle tracking area, which would steal the
+            // tooltip hover and replace the cursor with a resize arrow.
             // Spinner takes priority while a pull is in flight for this sticky.
             // Otherwise show the status dot only when there's something to
             // communicate (synced is the default and stays invisible).
