@@ -56,7 +56,20 @@ final class AuthService: ObservableObject {
     func accessToken() async throws -> String {
         guard var tokens = try currentTokens() else { throw AuthError.notSignedIn }
         if tokens.isExpired {
-            tokens = try await refresh(using: tokens.refreshToken)
+            do {
+                tokens = try await refresh(using: tokens.refreshToken)
+            } catch let error as AuthError {
+                // Google rejected the refresh token (revoked, password changed,
+                // 6-month inactivity, etc.). The token is dead; clear it so the
+                // menu bar flips to "Sign In with Google..." and per-sticky
+                // banners surface a re-auth prompt.
+                if case .tokenExchangeFailed = error {
+                    NSLog("[StickyDocs] refresh rejected, clearing tokens: \(error.localizedDescription)")
+                    try? signOut()
+                    throw AuthError.notSignedIn
+                }
+                throw error
+            }
             try persist(tokens)
         }
         return tokens.accessToken

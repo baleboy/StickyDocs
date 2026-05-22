@@ -99,6 +99,15 @@ final class StickyViewModel: ObservableObject {
         try? engine.acknowledgePushError(stickyId: sticky.id)
         reload()
     }
+
+    // Re-auth entry point from a "Sign in required" banner. On success the
+    // global authCancellable in AppController fires syncNow(), which clears
+    // the per-sticky error and dismisses the banner.
+    func signInAgain() {
+        Task {
+            _ = try? await AuthService.shared.signIn()
+        }
+    }
 }
 
 extension Sticky.SyncStatus {

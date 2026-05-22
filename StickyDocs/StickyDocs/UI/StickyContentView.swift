@@ -128,6 +128,12 @@ struct StickyContentView: View {
     }
 
     private var bannerKind: StickyBannerView.Kind? {
+        // Auth errors get their own banner with a Sign In button. They outrank
+        // generic errors and conflicts because nothing else can push until the
+        // user re-authenticates.
+        if viewModel.sticky.lastPushErrorRequiresSignIn {
+            return .signInRequired
+        }
         // Error outranks conflict: if we couldn't even reach Drive we have no
         // confirmation a conflict resolution actually pushed, so handle the
         // network problem first.
@@ -145,12 +151,13 @@ struct StickyContentView: View {
         switch kind {
         case .error: return { viewModel.syncNow() }
         case .conflict: return { viewModel.restoreBackup() }
+        case .signInRequired: return { viewModel.signInAgain() }
         }
     }
 
     private func secondaryAction(for kind: StickyBannerView.Kind) -> (() -> Void)? {
         switch kind {
-        case .error: return nil
+        case .error, .signInRequired: return nil
         case .conflict: return { viewModel.discardBackup() }
         }
     }
@@ -158,6 +165,7 @@ struct StickyContentView: View {
     private func dismissAction(for kind: StickyBannerView.Kind) -> (() -> Void)? {
         switch kind {
         case .error: return { viewModel.acknowledgePushError() }
+        case .signInRequired: return { viewModel.acknowledgePushError() }
         case .conflict: return nil   // user must choose Restore or Discard
         }
     }
@@ -167,11 +175,13 @@ private struct StickyBannerView: View {
     enum Kind {
         case error(String)
         case conflict
+        case signInRequired
 
         var icon: String {
             switch self {
             case .error: return "exclamationmark.circle.fill"
             case .conflict: return "exclamationmark.triangle.fill"
+            case .signInRequired: return "lock.fill"
             }
         }
 
@@ -179,6 +189,7 @@ private struct StickyBannerView: View {
             switch self {
             case .error: return Color(red: 0.78, green: 0.20, blue: 0.20)
             case .conflict: return Color(red: 0.82, green: 0.50, blue: 0.10)
+            case .signInRequired: return Color(red: 0.22, green: 0.36, blue: 0.62)
             }
         }
 
@@ -186,6 +197,7 @@ private struct StickyBannerView: View {
             switch self {
             case .error(let msg): return "Sync failed: \(msg)"
             case .conflict: return "Remote changes overwrote your unsynced edits."
+            case .signInRequired: return "Sign in to Google to keep syncing."
             }
         }
 
@@ -193,12 +205,13 @@ private struct StickyBannerView: View {
             switch self {
             case .error: return "Retry"
             case .conflict: return "Restore mine"
+            case .signInRequired: return "Sign In"
             }
         }
 
         var secondaryLabel: String? {
             switch self {
-            case .error: return nil
+            case .error, .signInRequired: return nil
             case .conflict: return "Discard"
             }
         }

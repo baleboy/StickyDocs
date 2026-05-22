@@ -70,6 +70,14 @@ struct Sticky: Codable, Identifiable, Equatable, FetchableRecord, PersistableRec
         return .synced
     }
 
+    // True when the recorded push error came from an expired/revoked OAuth
+    // token. The banner uses this to offer a "Sign In" button instead of a
+    // "Retry" button. Sniffs the persisted message rather than adding a new
+    // column — only one auth error string is produced (AuthError.notSignedIn).
+    var lastPushErrorRequiresSignIn: Bool {
+        lastPushErrorMessage == "Not signed in"
+    }
+
     static func makeNew(title: String = "", contentHTML: String = "", color: String = "yellow") -> Sticky {
         let now = Date()
         return Sticky(
