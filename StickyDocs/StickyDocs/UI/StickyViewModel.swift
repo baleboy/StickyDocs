@@ -87,6 +87,11 @@ final class StickyViewModel: ObservableObject {
         try? engine.discardBackup(stickyId: sticky.id)
         reload()
     }
+
+    func acknowledgePushError() {
+        try? engine.acknowledgePushError(stickyId: sticky.id)
+        reload()
+    }
 }
 
 extension Sticky.SyncStatus {

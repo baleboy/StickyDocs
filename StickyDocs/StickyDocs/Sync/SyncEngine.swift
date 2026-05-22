@@ -209,6 +209,15 @@ final class SyncEngine {
         try store.upsert(sticky)
     }
 
+    // User-invoked dismiss of an error banner. Keeps pendingPush=true so the
+    // next blur, debounce, or Sync Now still retries; just stops nagging.
+    func acknowledgePushError(stickyId: String) throws {
+        guard var sticky = try store.fetch(id: stickyId) else { return }
+        sticky.lastPushErrorMessage = nil
+        sticky.lastPushErrorAt = nil
+        try store.upsert(sticky)
+    }
+
     private static func userFacingMessage(for error: Error) -> String {
         let ns = error as NSError
         // URLError surfaces network failures with reasonable localized strings;

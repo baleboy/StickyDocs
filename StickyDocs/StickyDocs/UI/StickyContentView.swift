@@ -49,6 +49,15 @@ struct StickyContentView: View {
             }
             .frame(height: 16)
 
+            if let banner = bannerKind {
+                StickyBannerView(
+                    kind: banner,
+                    onPrimary: { primaryAction(for: banner)() },
+                    onSecondary: secondaryAction(for: banner),
+                    onDismiss: dismissAction(for: banner)
+                )
+            }
+
             StickyTextEditor(html: viewModel.sticky.contentHTML) { newAttributed in
                 let html = HTMLNormalizer.html(from: newAttributed)
                 try? viewModel.engine.updateContent(stickyId: viewModel.sticky.id, html: html)
@@ -73,37 +82,22 @@ struct StickyContentView: View {
                     .padding(4)
             }
         }
-        .overlay(alignment: .topLeading) {
-            if viewModel.sticky.conflictBackupHTML != nil {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.orange)
-                    .padding(3)
-                    .background(Circle().fill(.white.opacity(0.85)))
-                    .padding(.leading, 18)
-                    .padding(.top, 2)
-                    .help("Remote version replaced your unsynced edits. Right-click to restore or discard your backup.")
-            }
-        }
         .overlay(alignment: .bottomLeading) {
-            // Bottom-left, not bottom-right: the bottom-right corner is the
-            // window's resize handle tracking area, which would steal the
-            // tooltip hover and replace the cursor with a resize arrow.
-            // Spinner takes priority while a pull is in flight for this sticky.
-            // Otherwise show the status dot only when there's something to
-            // communicate (synced is the default and stays invisible).
+            // Status dot is now just a peripheral colour cue. The actual user-
+            // facing message for errors and conflicts lives in the banner above
+            // the editor. .help() tooltips don't work reliably here because the
+            // borderless window's resize tracking area covers every edge and
+            // steals hover events.
             if app.syncingStickyIds.contains(viewModel.sticky.id) {
                 Circle()
                     .fill(Color.blue.opacity(0.55))
                     .frame(width: 5, height: 5)
                     .padding(5)
-                    .help("Syncing from Drive...")
             } else if viewModel.sticky.syncStatus != .synced {
                 Circle()
                     .fill(viewModel.sticky.syncStatus.swiftUIColor.opacity(0.55))
                     .frame(width: 5, height: 5)
                     .padding(5)
-                    .help(viewModel.sticky.statusTooltip)
             }
         }
         .contextMenu {
@@ -131,5 +125,130 @@ struct StickyContentView: View {
             Divider()
             Button("Delete sticky", role: .destructive) { viewModel.delete() }
         }
+    }
+
+    private var bannerKind: StickyBannerView.Kind? {
+        // Error outranks conflict: if we couldn't even reach Drive we have no
+        // confirmation a conflict resolution actually pushed, so handle the
+        // network problem first.
+        if viewModel.sticky.syncStatus == .error,
+           let msg = viewModel.sticky.lastPushErrorMessage, !msg.isEmpty {
+            return .error(msg)
+        }
+        if viewModel.sticky.conflictBackupHTML != nil {
+            return .conflict
+        }
+        return nil
+    }
+
+    private func primaryAction(for kind: StickyBannerView.Kind) -> () -> Void {
+        switch kind {
+        case .error: return { viewModel.syncNow() }
+        case .conflict: return { viewModel.restoreBackup() }
+        }
+    }
+
+    private func secondaryAction(for kind: StickyBannerView.Kind) -> (() -> Void)? {
+        switch kind {
+        case .error: return nil
+        case .conflict: return { viewModel.discardBackup() }
+        }
+    }
+
+    private func dismissAction(for kind: StickyBannerView.Kind) -> (() -> Void)? {
+        switch kind {
+        case .error: return { viewModel.acknowledgePushError() }
+        case .conflict: return nil   // user must choose Restore or Discard
+        }
+    }
+}
+
+private struct StickyBannerView: View {
+    enum Kind {
+        case error(String)
+        case conflict
+
+        var icon: String {
+            switch self {
+            case .error: return "exclamationmark.circle.fill"
+            case .conflict: return "exclamationmark.triangle.fill"
+            }
+        }
+
+        var background: Color {
+            switch self {
+            case .error: return Color(red: 0.78, green: 0.20, blue: 0.20)
+            case .conflict: return Color(red: 0.82, green: 0.50, blue: 0.10)
+            }
+        }
+
+        var message: String {
+            switch self {
+            case .error(let msg): return "Sync failed: \(msg)"
+            case .conflict: return "Remote changes overwrote your unsynced edits."
+            }
+        }
+
+        var primaryLabel: String {
+            switch self {
+            case .error: return "Retry"
+            case .conflict: return "Restore mine"
+            }
+        }
+
+        var secondaryLabel: String? {
+            switch self {
+            case .error: return nil
+            case .conflict: return "Discard"
+            }
+        }
+    }
+
+    let kind: Kind
+    let onPrimary: () -> Void
+    let onSecondary: (() -> Void)?
+    let onDismiss: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: kind.icon)
+                .font(.system(size: 10, weight: .semibold))
+            Text(kind.message)
+                .font(.system(size: 11))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            bannerButton(kind.primaryLabel, action: onPrimary)
+            if let secondaryLabel = kind.secondaryLabel, let onSecondary {
+                bannerButton(secondaryLabel, action: onSecondary)
+            }
+            if let onDismiss {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .frame(width: 14, height: 14)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(kind.background.opacity(0.92))
+    }
+
+    @ViewBuilder
+    private func bannerButton(_ label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(.white.opacity(0.22), in: RoundedRectangle(cornerRadius: 4))
+        }
+        .buttonStyle(.plain)
     }
 }

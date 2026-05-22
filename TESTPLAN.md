@@ -75,11 +75,12 @@ on macOS.
 
 - [ ] **Setup.** Sign in. Create sticky, type "local". Blur (syncs). Open Doc in browser, type "remote", save.
 - [ ] **Provoking the conflict.** Before triggering pull, also edit the sticky locally (e.g. append " edit") but do **not** blur — `pendingPush` must still be true with content diverged from `lastSyncedHTML`. Then trigger pull via Sync Now (or relaunch). Expected: remote wins; sticky shows the remote content; previous local edit is stashed in `conflict_backup_html`.
-- [ ] **Conflict badge appears.** After the conflict resolves above, an orange warning triangle is visible in the sticky's top-left corner. Hovering shows a tooltip explaining a backup exists.
-- [ ] **Badge persists across relaunch.** Quit and relaunch with the conflict unresolved. The badge is still there (driven by `conflict_backup_html` in the DB).
-- [ ] **Restore my version.** Right-click the sticky → "Restore my version". Content reverts to the local edit; badge disappears; sticky becomes `pendingPush=true`. Blur to push — Doc in Drive now matches the local edit again.
-- [ ] **Discard my backup.** Re-create a conflict, then right-click → "Discard my backup". Content stays on the remote version; badge disappears; `conflict_backup_html` is `nil`; no push is triggered.
-- [ ] **Menu items only when conflict exists.** With no conflict, "Restore my version" / "Discard my backup" entries are absent from the context menu.
+- [ ] **Conflict banner appears.** After the conflict resolves above, an **orange banner** between the title bar and the editor reads "Remote changes overwrote your unsynced edits." with **Restore mine** and **Discard** buttons. There is no × dismiss — the user must choose.
+- [ ] **Banner persists across relaunch.** Quit and relaunch with the conflict unresolved. The banner is still there (driven by `conflict_backup_html` in the DB).
+- [ ] **Restore mine.** Click **Restore mine** in the banner. Content reverts to the local edit; banner disappears; sticky becomes `pendingPush=true`. Blur to push — Doc in Drive now matches the local edit again.
+- [ ] **Discard.** Re-create a conflict, then click **Discard** in the banner. Content stays on the remote version; banner disappears; `conflict_backup_html` is `nil`; no push is triggered.
+- [ ] **Right-click fallback still works.** With a conflict active, the right-click menu also offers "Restore my version" / "Discard my backup" — they behave the same as the banner buttons.
+- [ ] **Banner precedence.** With both a push error AND a conflict on the same sticky, the **red error banner** wins (the network problem has to clear before a conflict resolution can push).
 
 ## 8. Colors
 
@@ -123,8 +124,9 @@ on macOS.
 
 ## 14. Edge cases
 
-- [ ] **Offline at push time.** Disconnect wifi. Type in a sticky, blur. Expected: push fails — status dot turns **red**, tooltip shows a network error message (e.g. "The Internet connection appears to be offline."). Sticky stays `pending_push=true`. Reconnect and either type something or click Sync Now — push succeeds, dot goes back to green (no dot).
-- [ ] **Push error survives relaunch.** Provoke a push error (e.g. disconnect wifi and edit). Quit while offline. Relaunch (still offline). The sticky's dot is still red with the same tooltip — the error is persisted in `last_push_error_message`. Reconnect and Sync Now — dot clears.
+- [ ] **Offline at push time.** Disconnect wifi. Type in a sticky, blur. Expected: push fails — a **red banner** appears between the title bar and the editor reading "Sync failed: The Internet connection appears to be offline." with a **Retry** button and an **×** dismiss. The status dot in the corner is also red. Sticky stays `pending_push=true`. Reconnect and click Retry (or just type to fire a debounced push) — banner disappears, dot clears.
+- [ ] **Dismiss error.** While the red banner is showing, click the **×**. Banner disappears, dot turns orange (pending). On the next failed push the banner reappears with the latest error.
+- [ ] **Push error survives relaunch.** Provoke a push error (disconnect wifi, edit, wait). Quit while offline. Relaunch (still offline). The sticky's banner is still there with the same text — the error is persisted. Reconnect and click Retry — banner clears.
 - [ ] **Very long sticky.** Type ~2,000 chars including formatting. Push. Open Doc in browser — content intact. Pull on relaunch — content intact.
 - [ ] **Many stickies.** Create 20 stickies. All restore on relaunch. All Stickies panel renders without lag.
 - [ ] **Doc deleted in Drive UI.** Trash a sticky's Doc in Drive. Trigger a push from app on that sticky. Expected: push detects the 404, status flips to **unlinked** (red dot, tooltip "Doc was deleted in Drive"). Right-click → "Re-create Doc in Drive" provisions a fresh Doc with current content.
