@@ -40,6 +40,7 @@ struct MenuBarContent: View {
             }
         }
 
+#if DEBUG
         Divider()
 
         Menu("Debug") {
@@ -57,6 +58,7 @@ struct MenuBarContent: View {
                 }
             }
         }
+#endif
 
         Divider()
 
