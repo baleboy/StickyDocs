@@ -3,6 +3,8 @@ import AppKit
 
 @main
 struct StickyDocsApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     init() {
         // Materialize the shared controller eagerly so it observes app lifecycle
         // from launch onwards.
@@ -10,13 +12,19 @@ struct StickyDocsApp: App {
     }
 
     var body: some Scene {
-        Window("StickyDocs", id: "main") {
+#if DEBUG
+        // The auth + round-trip harness window. Only present in debug builds —
+        // release users shouldn't see "Save creds for tests" et al. on every
+        // launch. Launch-time work (onboarding, sticky restore, initial pull)
+        // moved to AppDelegate.applicationDidFinishLaunching so it runs even
+        // without this window.
+        Window("StickyDocs (Debug)", id: "main") {
             ContentView()
-                .task {
-                    AppController.shared.presentOnboardingIfNeeded()
-                    try? AppController.shared.restoreOpenStickies()
-                    await AppController.shared.pullAllFromDrive()
-                }
+        }
+#endif
+
+        MenuBarExtra("StickyDocs", systemImage: "note.text") {
+            MenuBarContent()
         }
         .commands {
             CommandMenu("Format") {
@@ -34,9 +42,15 @@ struct StickyDocsApp: App {
                 .keyboardShortcut("u", modifiers: .command)
             }
         }
+    }
+}
 
-        MenuBarExtra("StickyDocs", systemImage: "note.text") {
-            MenuBarContent()
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Task { @MainActor in
+            AppController.shared.presentOnboardingIfNeeded()
+            try? AppController.shared.restoreOpenStickies()
+            await AppController.shared.pullAllFromDrive()
         }
     }
 }

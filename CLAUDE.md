@@ -34,7 +34,9 @@ xcodebuild -project StickyDocs/StickyDocs.xcodeproj -scheme StickyDocs \
 
 ## Architecture
 
-Menu-bar macOS app (`MenuBarExtra` + a hidden main `Window`). Each sticky is a borderless floating `NSWindow` synced 1:1 with a Google Doc in a `Stickies/` folder in the user's Drive.
+Menu-bar macOS app (`MenuBarExtra`). Each sticky is a borderless floating `NSWindow` synced 1:1 with a Google Doc in a `Stickies/` folder in the user's Drive.
+
+A debug `Window("StickyDocs (Debug)")` is compiled in via `#if DEBUG` in `StickyDocsApp.swift`. It hosts the auth/round-trip test harness (`ContentView`) and is the entry point for "Save creds for tests" + manual API smoke tests. Release builds have no such window — they're menu-bar-only. Launch-time work (onboarding prompt, sticky window restoration, initial Drive pull) lives in `AppDelegate.applicationDidFinishLaunching` so it fires in both configurations.
 
 **Data flow (single source of truth = local SQLite):**
 

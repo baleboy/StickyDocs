@@ -134,10 +134,14 @@ on macOS.
 - [ ] **Many stickies.** Create 20 stickies. All restore on relaunch. All Stickies panel renders without lag.
 - [ ] **Doc deleted in Drive UI.** Trash a sticky's Doc in Drive. Trigger a push from app on that sticky. Expected: push detects the 404, status flips to **unlinked** (red dot, tooltip "Doc was deleted in Drive"). Right-click → "Re-create Doc in Drive" provisions a fresh Doc with current content.
 
-## 15. Auth/round-trip harness window
+## 15. Auth/round-trip harness window (DEBUG builds only)
 
+The debug harness `Window("StickyDocs (Debug)")` only exists in DEBUG builds. In a Release build it should be **completely absent** — the app is menu-bar-only.
+
+- [ ] **Debug build.** Build & run via Xcode (default = Debug). The "StickyDocs (Debug)" window opens on launch with the round-trip test buttons.
 - [ ] **Round-trip test.** Click **Run Doc Round-Trip Test**. All 10 canned cases pass. Test Doc is created and trashed automatically.
 - [ ] **List Drive files.** Click → returns files visible under `drive.file` scope (just StickyDocs-created ones).
+- [ ] **Release build hides the harness.** Build with `-configuration Release` (Xcode: Product → Scheme → Edit Scheme → Run → Build Configuration = Release). Launch — no debug window appears. Menu bar icon is visible, "New Sticky" works, onboarding triggers on a fresh install. The `File → New Window` menu item is absent (no Window scene exists in release).
 
 ---
 
