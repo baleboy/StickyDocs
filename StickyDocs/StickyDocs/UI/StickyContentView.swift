@@ -100,7 +100,7 @@ struct StickyContentView: View {
                     .fill(viewModel.sticky.syncStatus.swiftUIColor.opacity(0.55))
                     .frame(width: 5, height: 5)
                     .padding(5)
-                    .help(viewModel.sticky.syncStatus.description)
+                    .help(viewModel.sticky.statusTooltip)
             }
         }
         .contextMenu {

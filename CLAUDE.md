@@ -67,6 +67,6 @@ Push triggers: a **1.5s per-sticky debounce after each keystroke** (`SyncEngine.
 
 ## Conventions worth knowing
 
-- Call sites of `engine.push(...)` are wrapped in `try?` (silent failure). When debugging missing syncs, replace with `do/catch + NSLog`; check Console.app filtering on `StickyDocs`.
+- Call sites of `engine.push(...)` are still wrapped in `try?`, but `push` now persists any error to the sticky's `last_push_error_message` / `last_push_error_at` columns before re-throwing. The status dot flips to red and the tooltip shows the message, so failures are no longer silent. `pendingPush` stays `true` on error so blur, debounce, or Sync Now will retry; a successful push clears both error fields. For deeper debugging, check Console.app filtering on `StickyDocs`.
 - All `SyncEngine` and UI controller code is `@MainActor`. GRDB `ValueObservation` callbacks hop back to the main actor via `Task { @MainActor in ... }`.
 - Sticky window styling depends on `StickyKeyableWindow` overriding `canBecomeKey`/`canBecomeMain`; a borderless `NSWindow` is not key-eligible by default, which would break text input and (transitively) the blur-triggered push.

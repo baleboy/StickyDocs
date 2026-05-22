@@ -60,6 +60,12 @@ final class StickyStore {
                 t.add(column: "is_open", .boolean).notNull().defaults(to: true)
             }
         }
+        m.registerMigration("v3_push_error") { db in
+            try db.alter(table: Sticky.databaseTableName) { t in
+                t.add(column: "last_push_error_message", .text)
+                t.add(column: "last_push_error_at", .datetime)
+            }
+        }
         return m
     }
 

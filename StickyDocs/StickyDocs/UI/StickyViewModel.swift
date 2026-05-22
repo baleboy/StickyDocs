@@ -96,6 +96,7 @@ extension Sticky.SyncStatus {
         case .pending: return Color.orange
         case .synced: return Color.green
         case .unlinked: return Color.red
+        case .error: return Color.red
         }
     }
 
@@ -105,6 +106,16 @@ extension Sticky.SyncStatus {
         case .pending: return "Pending sync"
         case .synced: return "Synced"
         case .unlinked: return "Doc was deleted in Drive"
+        case .error: return "Last sync failed"
         }
+    }
+}
+
+extension Sticky {
+    var statusTooltip: String {
+        if syncStatus == .error, let msg = lastPushErrorMessage, !msg.isEmpty {
+            return "Last sync failed: \(msg)"
+        }
+        return syncStatus.description
     }
 }

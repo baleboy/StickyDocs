@@ -96,6 +96,7 @@ private struct StickyRow: View {
                 Circle()
                     .fill(sticky.syncStatus.swiftUIColor.opacity(0.55))
                     .frame(width: 6, height: 6)
+                    .help(sticky.statusTooltip)
             }
         }
         .padding(.vertical, 2)

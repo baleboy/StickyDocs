@@ -123,10 +123,11 @@ on macOS.
 
 ## 14. Edge cases
 
-- [ ] **Offline at push time.** Disconnect wifi. Type in a sticky, blur. Expected: push silently fails (no error toast yet — known gap). Sticky stays `pending_push=true`. Reconnect, Sync Now from menu — push succeeds.
+- [ ] **Offline at push time.** Disconnect wifi. Type in a sticky, blur. Expected: push fails — status dot turns **red**, tooltip shows a network error message (e.g. "The Internet connection appears to be offline."). Sticky stays `pending_push=true`. Reconnect and either type something or click Sync Now — push succeeds, dot goes back to green (no dot).
+- [ ] **Push error survives relaunch.** Provoke a push error (e.g. disconnect wifi and edit). Quit while offline. Relaunch (still offline). The sticky's dot is still red with the same tooltip — the error is persisted in `last_push_error_message`. Reconnect and Sync Now — dot clears.
 - [ ] **Very long sticky.** Type ~2,000 chars including formatting. Push. Open Doc in browser — content intact. Pull on relaunch — content intact.
 - [ ] **Many stickies.** Create 20 stickies. All restore on relaunch. All Stickies panel renders without lag.
-- [ ] **Doc deleted in Drive UI.** Trash a sticky's Doc in Drive. Trigger a push from app on that sticky. Expected: push fails (404). *Status not surfaced; sticky stays pending — known gap.*
+- [ ] **Doc deleted in Drive UI.** Trash a sticky's Doc in Drive. Trigger a push from app on that sticky. Expected: push detects the 404, status flips to **unlinked** (red dot, tooltip "Doc was deleted in Drive"). Right-click → "Re-create Doc in Drive" provisions a fresh Doc with current content.
 
 ## 15. Auth/round-trip harness window
 
@@ -138,8 +139,8 @@ on macOS.
 ## Known gaps (not bugs)
 
 - Explicit pull trigger isn't wired to UI yet (pull happens implicitly only).
-- Push failures don't show user-visible errors (status dot stays orange forever).
-- No debounced background push — push only on blur / explicit Sync Now.
-- No periodic Drive `changes.list` polling — remote changes only show after relaunch.
-- Preferences window and onboarding screen not built.
+- No periodic Drive `changes.list` polling — remote changes only show on relaunch / focus / Sync Now.
+- Preferences window not built.
 - Dark mode color variants not tuned.
+- No conflict toast UI yet (the conflict badge in §7 is the only signal).
+- No re-auth UX when refresh token is revoked — pushes will turn the dot red on every sticky but there's no "Sign in required" affordance yet.

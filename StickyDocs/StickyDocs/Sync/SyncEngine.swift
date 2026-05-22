@@ -123,6 +123,18 @@ final class SyncEngine {
     }
 
     func push(stickyId: String) async throws {
+        do {
+            try await pushInner(stickyId: stickyId)
+        } catch {
+            // Persist the failure so the sticky's status dot turns red with a
+            // tooltip explaining what went wrong. pendingPush stays true so a
+            // subsequent blur, debounce, or Sync Now retries automatically.
+            try? recordPushError(stickyId: stickyId, error: error)
+            throw error
+        }
+    }
+
+    private func pushInner(stickyId: String) async throws {
         guard var sticky = try store.fetch(id: stickyId) else { return }
         // Skip stickies that have no real content yet - don't create a Doc
         // just for an empty note the user might still discard.
@@ -185,7 +197,29 @@ final class SyncEngine {
         sticky.lastSyncedHTML = sticky.contentHTML
         sticky.lastSyncedAt = Date()
         sticky.pendingPush = false
+        sticky.lastPushErrorMessage = nil
+        sticky.lastPushErrorAt = nil
         try store.upsert(sticky)
+    }
+
+    private func recordPushError(stickyId: String, error: Error) throws {
+        guard var sticky = try store.fetch(id: stickyId) else { return }
+        sticky.lastPushErrorMessage = Self.userFacingMessage(for: error)
+        sticky.lastPushErrorAt = Date()
+        try store.upsert(sticky)
+    }
+
+    private static func userFacingMessage(for error: Error) -> String {
+        let ns = error as NSError
+        // URLError surfaces network failures with reasonable localized strings;
+        // our Drive/Docs client wraps HTTP errors in NSError with the response
+        // body as localizedDescription, which is verbose but truthful.
+        let raw = ns.localizedDescription
+        if raw.isEmpty { return "Sync failed (\(ns.domain) \(ns.code))." }
+        // Trim to a one-line tooltip-friendly length; full text still lives in
+        // the NSLog stream for debugging.
+        let max = 200
+        return raw.count <= max ? raw : String(raw.prefix(max)) + "…"
     }
 
     private static func isMissingDocError(_ error: NSError) -> Bool {

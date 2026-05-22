@@ -21,6 +21,8 @@ struct Sticky: Codable, Identifiable, Equatable, FetchableRecord, PersistableRec
     var pendingPush: Bool
     var deletedLocally: Bool
     var isOpen: Bool
+    var lastPushErrorMessage: String?
+    var lastPushErrorAt: Date?
 
     static let databaseTableName = "stickies"
 
@@ -44,6 +46,8 @@ struct Sticky: Codable, Identifiable, Equatable, FetchableRecord, PersistableRec
         case pendingPush = "pending_push"
         case deletedLocally = "deleted_locally"
         case isOpen = "is_open"
+        case lastPushErrorMessage = "last_push_error_message"
+        case lastPushErrorAt = "last_push_error_at"
     }
 
     enum SyncStatus {
@@ -51,11 +55,15 @@ struct Sticky: Codable, Identifiable, Equatable, FetchableRecord, PersistableRec
         case pending
         case synced
         case unlinked   // had a Doc, but it was deleted in Drive
+        case error      // last push attempt failed; see lastPushErrorMessage
     }
 
     var syncStatus: SyncStatus {
         // Previously synced but the Doc is gone from Drive.
         if googleDocId == nil && lastSyncedAt != nil { return .unlinked }
+        // A persisted push failure outranks everything else so the user
+        // notices something is wrong instead of seeing the dot stay orange.
+        if lastPushErrorMessage != nil { return .error }
         // Empty new sticky with nothing to push: treat as synced (no dot).
         if googleDocId == nil && !pendingPush { return .synced }
         if pendingPush { return .pending }
@@ -80,7 +88,9 @@ struct Sticky: Codable, Identifiable, Equatable, FetchableRecord, PersistableRec
             lastSyncedAt: nil,
             pendingPush: false,
             deletedLocally: false,
-            isOpen: true
+            isOpen: true,
+            lastPushErrorMessage: nil,
+            lastPushErrorAt: nil
         )
     }
 }
