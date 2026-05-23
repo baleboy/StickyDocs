@@ -271,10 +271,14 @@ jobs:
           SIGN_UPDATE="$RUNNER_TEMP/sparkle/bin/sign_update"
           chmod +x "$SIGN_UPDATE"
 
-          # Sign the released zip with the EdDSA private key. -s takes the
-          # base64 key string directly; we never write it to disk.
-          PRIVATE_KEY=$(echo "$SPARKLE_PRIVATE_KEY_BASE64" | base64 --decode)
-          SIG_LINE=$("$SIGN_UPDATE" -s "$PRIVATE_KEY" "$ZIP_PATH")
+          # Sign the released zip with the EdDSA private key. sign_update
+          # in Sparkle 2.9.1 rejects the old -s flag; the supported path is
+          # --ed-key-file. Write the key with 600 perms, shred after use.
+          KEY_FILE="$RUNNER_TEMP/sparkle_priv.key"
+          umask 077
+          echo "$SPARKLE_PRIVATE_KEY_BASE64" | base64 --decode > "$KEY_FILE"
+          SIG_LINE=$("$SIGN_UPDATE" --ed-key-file "$KEY_FILE" "$ZIP_PATH")
+          rm -P "$KEY_FILE"
           echo "Signature line: $SIG_LINE"
           ED_SIG=$(echo "$SIG_LINE" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')
           LENGTH=$(echo "$SIG_LINE" | sed -n 's/.*length="\([^"]*\)".*/\1/p')
