@@ -206,19 +206,20 @@ final class AppController: ObservableObject {
     // the subsequent push pass simply skips it.
     func syncNow() async {
         guard AuthService.shared.isSignedIn else { return }
-        // Capture pre-discovery count: when this is 0 and discovery imports
-        // anything, we're in the "fresh install on a second Mac" case and
-        // should surface the All Stickies panel so the user immediately sees
-        // their imported notes (instead of having to find them via the menu
-        // bar or dock icon).
+        // "Fresh install on a second Mac" case: local store empty + Drive has
+        // at least one tagged sticky to import. Open the All Stickies panel
+        // as soon as we know there's work, before the slow per-doc fetches —
+        // stickies then populate live via ValueObservation rather than the
+        // user staring at the dock for several seconds.
         let preDiscoveryCount = (try? store.allActive().count) ?? 0
         do {
-            let imported = try await engine.discoverRemoteStickies()
+            let imported = try await engine.discoverRemoteStickies { [weak self] pending in
+                if pending > 0, preDiscoveryCount == 0 {
+                    self?.showAllStickiesPanel()
+                }
+            }
             if imported > 0 {
                 NSLog("[StickyDocs] Discovered \(imported) sticky/stickies from Drive (cross-machine restore)")
-                if preDiscoveryCount == 0 {
-                    showAllStickiesPanel()
-                }
             }
         } catch {
             NSLog("[StickyDocs] discoverRemoteStickies failed: \(error)")

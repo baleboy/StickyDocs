@@ -121,11 +121,24 @@ final class SyncEngine {
     // is a no-op once everything is imported. Imported stickies land with
     // isOpen=false so a fresh install doesn't spawn N floating windows; the
     // user can selectively reopen them from All Stickies.
-    func discoverRemoteStickies() async throws -> Int {
+    //
+    // `onPendingImports` is invoked once, right after the cheap list call
+    // resolves and before the slow per-doc fetches start. AppController uses
+    // it to surface the All Stickies panel immediately on a fresh install so
+    // the user sees something happening (stickies then trickle into the panel
+    // via ValueObservation as each upsert completes) instead of staring at
+    // the dock for several seconds.
+    func discoverRemoteStickies(
+        onPendingImports: ((Int) -> Void)? = nil
+    ) async throws -> Int {
         let docs = try await deps.listTaggedStickies()
+        let toImport: [(id: String, name: String)] = try docs.compactMap { doc in
+            try store.fetchByDocId(doc.id) == nil ? doc : nil
+        }
+        onPendingImports?(toImport.count)
+
         var imported = 0
-        for doc in docs {
-            if try store.fetchByDocId(doc.id) != nil { continue }
+        for doc in toImport {
             let html = try await deps.exportAsHTML(doc.id)
             let canonical = HTMLNormalizer.html(from: HTMLNormalizer.attributedString(from: html))
             let revisionId = try? await deps.fetchRevisionId(doc.id)
