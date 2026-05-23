@@ -17,6 +17,10 @@ final class AppController: ObservableObject {
     // a spinner in place of the status dot.
     @Published private(set) var syncingStickyIds: Set<String> = []
     @Published private(set) var isOnboardingComplete: Bool = false
+    // Set when discovery wants to open the All Stickies panel but onboarding
+    // is still on screen (typically the folder-choice step right after
+    // sign-in). markOnboardingComplete flushes this once onboarding closes.
+    private var pendingShowAllStickies = false
     private var authCancellable: AnyCancellable?
     private let driveClient: GoogleDriveClient
     private let folderIdCache: FolderIdCache
@@ -214,8 +218,14 @@ final class AppController: ObservableObject {
         let preDiscoveryCount = (try? store.allActive().count) ?? 0
         do {
             let imported = try await engine.discoverRemoteStickies { [weak self] pending in
-                if pending > 0, preDiscoveryCount == 0 {
-                    self?.showAllStickiesPanel()
+                guard let self, pending > 0, preDiscoveryCount == 0 else { return }
+                // Don't pop the panel over the onboarding folder-choice
+                // dialog. Defer until markOnboardingComplete fires (window
+                // closed via Finish, Skip, or the red X).
+                if self.onboarding.isShowing {
+                    self.pendingShowAllStickies = true
+                } else {
+                    self.showAllStickiesPanel()
                 }
             }
             if imported > 0 {
@@ -266,6 +276,12 @@ final class AppController: ObservableObject {
     func markOnboardingComplete() {
         try? store.setAppState(key: OnboardingKeys.complete, value: "1")
         isOnboardingComplete = true
+        // Flush a deferred panel-open queued by syncNow's discovery callback
+        // while onboarding was still on screen.
+        if pendingShowAllStickies {
+            pendingShowAllStickies = false
+            showAllStickiesPanel()
+        }
     }
 
     func openStickiesFolderInBrowser() {

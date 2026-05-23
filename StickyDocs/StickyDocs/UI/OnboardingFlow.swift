@@ -19,6 +19,8 @@ final class OnboardingController: NSObject, ObservableObject {
 
     private weak var window: NSWindow?
 
+    var isShowing: Bool { window != nil }
+
     func present(startAt step: Step) {
         self.step = step
         errorMessage = nil
