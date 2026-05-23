@@ -7,8 +7,10 @@ struct StickyDocsApp: App {
 
     init() {
         // Materialize the shared controller eagerly so it observes app lifecycle
-        // from launch onwards.
+        // from launch onwards. Same for the Sparkle updater — instantiating it
+        // here starts the scheduled background update checks.
         _ = AppController.shared
+        _ = Updater.shared
     }
 
     var body: some Scene {

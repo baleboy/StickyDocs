@@ -145,6 +145,18 @@ The debug harness `Window("StickyDocs (Debug)")` only exists in DEBUG builds. In
 - [ ] **List Drive files.** Click → returns files visible under `drive.file` scope (just StickyDocs-created ones).
 - [ ] **Release build hides the harness.** Build with `-configuration Release` (Xcode: Product → Scheme → Edit Scheme → Run → Build Configuration = Release). Launch — no debug window appears. Menu bar icon is visible, "New Sticky" works, onboarding triggers on a fresh install. The `File → New Window` menu item is absent (no Window scene exists in release).
 
+## 16. Sparkle auto-update
+
+Updates ship via [Sparkle](https://sparkle-project.org/). The appcast lives at https://baleboy.github.io/StickyDocs/appcast.xml. Stable users only see items without a channel tag; beta users see items tagged `<sparkle:channel>beta</sparkle:channel>`. The git-tag convention drives the channel: bare semver (`v1.0.0`) → stable, pre-release (`v1.0.0-beta.1`) → beta.
+
+- [ ] **Check for Updates — no update available.** From the menu bar, click **Check for Updates...** when the installed version matches the latest applicable appcast item. Sparkle's "You're up to date" sheet appears.
+- [ ] **Check for Updates — update available.** Install an older version (or temporarily bump the appcast version), click **Check for Updates...**. Sparkle's update sheet appears. Install → app relaunches on the new version. `CFBundleShortVersionString` in `Info.plist` matches the appcast item.
+- [ ] **Background check.** Quit and relaunch. If `SUScheduledCheckInterval` (86400s) has elapsed since the last check and an update is available, Sparkle prompts on its own without user action.
+- [ ] **Beta channel — opt out (default).** With "Receive Beta Updates" off, a beta-tagged appcast item must NOT trigger an update. Click **Check for Updates...** — only untagged items are considered.
+- [ ] **Beta channel — opt in.** Tick **Receive Beta Updates** in the menu, then click **Check for Updates...**. The beta item is now offered. Toggle off again — beta items are filtered out on the next check.
+- [ ] **Signature mismatch refuses install.** Replace the zip on a GitHub release with a corrupted copy (don't re-sign). Click **Check for Updates...**. Sparkle downloads it, fails EdDSA verification, and refuses to install. The installed version stays put.
+- [ ] **Sandbox / XPC.** Confirm the install completes without Gatekeeper or sandbox warnings. The app is sandboxed; Sparkle's Installer Launcher XPC reaches its mach service via the `$(PRODUCT_BUNDLE_IDENTIFIER)-spks` and `-spki` temporary-exception entitlements.
+
 ---
 
 ## Known gaps (not bugs)

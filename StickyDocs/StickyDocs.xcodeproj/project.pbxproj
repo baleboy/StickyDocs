@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		25B4E4022FB89000001D471A /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 25B4E4012FB89000001D471A /* GRDB */; };
+		25B4E8442FC1CCAD001D471A /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 25B4E8432FC1CCAD001D471A /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -57,6 +58,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				25B4E4022FB89000001D471A /* GRDB in Frameworks */,
+				25B4E8442FC1CCAD001D471A /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -126,6 +128,7 @@
 			name = StickyDocs;
 			packageProductDependencies = (
 				25B4E4012FB89000001D471A /* GRDB */,
+				25B4E8432FC1CCAD001D471A /* Sparkle */,
 			);
 			productName = StickyDocs;
 			productReference = 25B4E3AC2FB869D3001D471A /* StickyDocs.app */;
@@ -431,8 +434,8 @@
 				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
 				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = StickyDocs/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -474,8 +477,8 @@
 				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
 				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = StickyDocs/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -638,6 +641,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 25B4E3D72FB86BB9001D471A /* XCRemoteSwiftPackageReference "GRDB" */;
 			productName = GRDB;
+		};
+		25B4E8432FC1CCAD001D471A /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 25B4E3D82FB86C05001D471A /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

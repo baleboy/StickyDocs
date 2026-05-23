@@ -5,6 +5,7 @@ struct MenuBarContent: View {
     @ObservedObject private var auth = AuthService.shared
     @ObservedObject private var debug = DebugSettings.shared
     @ObservedObject private var app = AppController.shared
+    @ObservedObject private var updater = Updater.shared
 
     var body: some View {
         Button("New Sticky") {
@@ -39,6 +40,15 @@ struct MenuBarContent: View {
                 Task { _ = try? await auth.signIn() }
             }
         }
+
+        Divider()
+
+        Button("Check for Updates...") {
+            updater.checkForUpdates()
+        }
+        .disabled(!updater.canCheckForUpdates)
+
+        Toggle("Receive Beta Updates", isOn: $updater.betaChannelEnabled)
 
 #if DEBUG
         Divider()

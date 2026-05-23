@@ -244,6 +244,100 @@ jobs:
           draft: false
           generate_release_notes: true
 
+      - name: Publish appcast
+        if: startsWith(github.ref, 'refs/tags/v') && steps.signing.outputs.sign == 'true' && steps.signing.outputs.notarize == 'true'
+        env:
+          SPARKLE_PRIVATE_KEY_BASE64: ${{ secrets.SPARKLE_PRIVATE_KEY_BASE64 }}
+          SPARKLE_VERSION: "2.9.1"
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          BUILD: ${{ github.run_number }}
+          ZIP_PATH: ${{ steps.package.outputs.zip_path }}
+          ZIP_NAME: ${{ steps.package.outputs.zip_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$SPARKLE_PRIVATE_KEY_BASE64" ]; then
+            echo "::error::SPARKLE_PRIVATE_KEY_BASE64 secret is required to publish the appcast."
+            exit 1
+          fi
+
+          # Fetch sign_update from the Sparkle release tarball. Pinned to the
+          # version in Package.resolved so the signing tool matches the SDK.
+          SPARKLE_TARBALL="Sparkle-${SPARKLE_VERSION}.tar.xz"
+          curl -sSL -o "$RUNNER_TEMP/$SPARKLE_TARBALL" \
+            "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/${SPARKLE_TARBALL}"
+          mkdir -p "$RUNNER_TEMP/sparkle"
+          tar -xJf "$RUNNER_TEMP/$SPARKLE_TARBALL" -C "$RUNNER_TEMP/sparkle"
+          SIGN_UPDATE="$RUNNER_TEMP/sparkle/bin/sign_update"
+          chmod +x "$SIGN_UPDATE"
+
+          # Sign the released zip with the EdDSA private key. -s takes the
+          # base64 key string directly; we never write it to disk.
+          PRIVATE_KEY=$(echo "$SPARKLE_PRIVATE_KEY_BASE64" | base64 --decode)
+          SIG_LINE=$("$SIGN_UPDATE" -s "$PRIVATE_KEY" "$ZIP_PATH")
+          echo "Signature line: $SIG_LINE"
+          ED_SIG=$(echo "$SIG_LINE" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')
+          LENGTH=$(echo "$SIG_LINE" | sed -n 's/.*length="\([^"]*\)".*/\1/p')
+          if [ -z "$ED_SIG" ] || [ -z "$LENGTH" ]; then
+            echo "::error::Could not parse sign_update output."
+            exit 1
+          fi
+
+          MIN_OS=$(defaults read "$EXPORT_DIR/${APP_NAME}.app/Contents/Info" LSMinimumSystemVersion 2>/dev/null || echo "14.0")
+          ENCLOSURE_URL="https://github.com/${REPO}/releases/download/${TAG}/${ZIP_NAME}"
+          PUB_DATE=$(date -R)
+
+          # Beta channel: tags like v1.0.0-beta.1 ship to beta; bare semver to stable.
+          IS_BETA=false
+          if [[ "$TAG" == *-* ]]; then IS_BETA=true; fi
+
+          # Build the <item> XML with printf — avoids YAML-vs-heredoc indentation
+          # traps. Whitespace inside is harmless.
+          ITEM_FILE="$RUNNER_TEMP/item.xml"
+          {
+            printf '        <item>\n'
+            printf '            <title>Version %s</title>\n' "$VERSION"
+            printf '            <pubDate>%s</pubDate>\n' "$PUB_DATE"
+            printf '            <sparkle:version>%s</sparkle:version>\n' "$BUILD"
+            printf '            <sparkle:shortVersionString>%s</sparkle:shortVersionString>\n' "$VERSION"
+            printf '            <sparkle:minimumSystemVersion>%s</sparkle:minimumSystemVersion>\n' "$MIN_OS"
+            if [ "$IS_BETA" = "true" ]; then
+              printf '            <sparkle:channel>beta</sparkle:channel>\n'
+            fi
+            printf '            <enclosure url="%s" sparkle:edSignature="%s" length="%s" type="application/octet-stream"/>\n' \
+              "$ENCLOSURE_URL" "$ED_SIG" "$LENGTH"
+            printf '        </item>\n'
+          } > "$ITEM_FILE"
+          cat "$ITEM_FILE"
+
+          # Switch to main so the appcast commit lives on a branch, not on
+          # detached HEAD at the tag.
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout main
+
+          # Insert the new item just before </channel>. YAML strips the common
+          # leading indent before bash sees this block, so the Python heredoc
+          # body lands at column 0 by the time Python parses it.
+          ITEM_FILE="$ITEM_FILE" python3 <<'PY'
+          import os, pathlib
+          item = pathlib.Path(os.environ["ITEM_FILE"]).read_text()
+          p = pathlib.Path("docs/appcast.xml")
+          xml = p.read_text()
+          if item.strip() in xml:
+              raise SystemExit("Item already in appcast; nothing to publish.")
+          p.write_text(xml.replace("</channel>", item + "    </channel>", 1))
+          PY
+
+          git add docs/appcast.xml
+          if git diff --cached --quiet; then
+            echo "No appcast change to commit"
+          else
+            git commit -m "Publish ${TAG} to appcast"
+            git push origin main
+          fi
+
       - name: Clean up keychain
         if: always() && steps.signing.outputs.sign == 'true'
         run: |
