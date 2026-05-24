@@ -291,9 +291,10 @@ jobs:
           ENCLOSURE_URL="https://github.com/${REPO}/releases/download/${TAG}/${ZIP_NAME}"
           PUB_DATE=$(date -R)
 
-          # Beta channel: tags like v1.0.0-beta.1 ship to beta; bare semver to stable.
-          IS_BETA=false
-          if [[ "$TAG" == *-* ]]; then IS_BETA=true; fi
+          # Alpha channel: tags like v1.0.0-alpha.1 (or any pre-release suffix
+          # after a hyphen) ship to alpha; bare semver to stable.
+          IS_ALPHA=false
+          if [[ "$TAG" == *-* ]]; then IS_ALPHA=true; fi
 
           # Build the <item> XML with printf — avoids YAML-vs-heredoc indentation
           # traps. Whitespace inside is harmless.
@@ -305,8 +306,8 @@ jobs:
             printf '            <sparkle:version>%s</sparkle:version>\n' "$BUILD"
             printf '            <sparkle:shortVersionString>%s</sparkle:shortVersionString>\n' "$VERSION"
             printf '            <sparkle:minimumSystemVersion>%s</sparkle:minimumSystemVersion>\n' "$MIN_OS"
-            if [ "$IS_BETA" = "true" ]; then
-              printf '            <sparkle:channel>beta</sparkle:channel>\n'
+            if [ "$IS_ALPHA" = "true" ]; then
+              printf '            <sparkle:channel>alpha</sparkle:channel>\n'
             fi
             printf '            <enclosure url="%s" sparkle:edSignature="%s" length="%s" type="application/octet-stream"/>\n' \
               "$ENCLOSURE_URL" "$ED_SIG" "$LENGTH"

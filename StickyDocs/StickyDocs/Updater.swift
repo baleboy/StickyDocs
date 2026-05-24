@@ -4,18 +4,22 @@ import Combine
 
 // Wraps Sparkle's SPUStandardUpdaterController so the rest of the app talks to
 // a small, observable surface. The delegate maps a UserDefaults toggle to
-// Sparkle's channel filter — beta builds publish appcast items with
-// <sparkle:channel>beta</sparkle:channel>; stable items are untagged. Sparkle's
+// Sparkle's channel filter — alpha builds publish appcast items with
+// <sparkle:channel>alpha</sparkle:channel>; stable items are untagged. Sparkle's
 // default is "items with no channel only", so opting in is a one-way switch.
 @MainActor
 final class Updater: ObservableObject {
     static let shared = Updater()
 
-    static let betaChannelDefaultsKey = "ReceiveBetaUpdates"
+    static let alphaChannelDefaultsKey = "ReceiveAlphaUpdates"
+    // Old key from when the pre-release channel was called "beta". Migrated
+    // once on first launch so a user who had the toggle on doesn't silently
+    // get switched off by the rename.
+    private static let legacyBetaChannelDefaultsKey = "ReceiveBetaUpdates"
 
-    @Published var betaChannelEnabled: Bool {
+    @Published var alphaChannelEnabled: Bool {
         didSet {
-            UserDefaults.standard.set(betaChannelEnabled, forKey: Self.betaChannelDefaultsKey)
+            UserDefaults.standard.set(alphaChannelEnabled, forKey: Self.alphaChannelDefaultsKey)
         }
     }
 
@@ -23,7 +27,14 @@ final class Updater: ObservableObject {
     private let controller: SPUStandardUpdaterController
 
     private init() {
-        self.betaChannelEnabled = UserDefaults.standard.bool(forKey: Self.betaChannelDefaultsKey)
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: Self.alphaChannelDefaultsKey) == nil,
+           defaults.object(forKey: Self.legacyBetaChannelDefaultsKey) != nil {
+            defaults.set(defaults.bool(forKey: Self.legacyBetaChannelDefaultsKey),
+                         forKey: Self.alphaChannelDefaultsKey)
+            defaults.removeObject(forKey: Self.legacyBetaChannelDefaultsKey)
+        }
+        self.alphaChannelEnabled = defaults.bool(forKey: Self.alphaChannelDefaultsKey)
         self.controller = SPUStandardUpdaterController(
             startingUpdater: true,
             updaterDelegate: delegate,
@@ -42,6 +53,6 @@ final class Updater: ObservableObject {
 
 private final class UpdaterDelegate: NSObject, SPUUpdaterDelegate {
     func allowedChannels(for updater: SPUUpdater) -> Set<String> {
-        UserDefaults.standard.bool(forKey: Updater.betaChannelDefaultsKey) ? ["beta"] : []
+        UserDefaults.standard.bool(forKey: Updater.alphaChannelDefaultsKey) ? ["alpha"] : []
     }
 }

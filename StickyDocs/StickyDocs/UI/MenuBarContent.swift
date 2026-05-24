@@ -48,7 +48,15 @@ struct MenuBarContent: View {
         }
         .disabled(!updater.canCheckForUpdates)
 
-        Toggle("Receive Beta Updates", isOn: $updater.betaChannelEnabled)
+        Toggle("Receive Alpha Updates", isOn: $updater.alphaChannelEnabled)
+
+        Divider()
+
+        Button("Report an Issue...") {
+            if let url = URL(string: "https://github.com/baleboy/StickyDocs/issues") {
+                NSWorkspace.shared.open(url)
+            }
+        }
 
 #if DEBUG
         Divider()
@@ -133,7 +141,15 @@ struct StickyDocsCommands: Commands {
             }
             .disabled(!updater.canCheckForUpdates)
 
-            Toggle("Receive Beta Updates", isOn: $updater.betaChannelEnabled)
+            Toggle("Receive Alpha Updates", isOn: $updater.alphaChannelEnabled)
+
+        Divider()
+
+        Button("Report an Issue...") {
+            if let url = URL(string: "https://github.com/baleboy/StickyDocs/issues") {
+                NSWorkspace.shared.open(url)
+            }
+        }
 
 #if DEBUG
             Divider()
