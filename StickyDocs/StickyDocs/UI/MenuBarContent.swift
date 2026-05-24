@@ -78,3 +78,82 @@ struct MenuBarContent: View {
         .keyboardShortcut("q", modifiers: .command)
     }
 }
+
+// Mirrors MenuBarContent into the regular application menu, so the same actions
+// remain reachable when the MenuBarExtra icon is hidden (e.g. crowded menu bars
+// on notched Macs) and the app is in the foreground. Quit and Format are
+// already provided by the system / Format CommandMenu, so they're omitted here.
+struct StickyDocsCommands: Commands {
+    @ObservedObject private var auth = AuthService.shared
+    @ObservedObject private var debug = DebugSettings.shared
+    @ObservedObject private var app = AppController.shared
+    @ObservedObject private var updater = Updater.shared
+
+    var body: some Commands {
+        CommandGroup(replacing: .newItem) {
+            Button("New Sticky") {
+                if app.isOnboardingComplete {
+                    _ = try? AppController.shared.newSticky()
+                } else {
+                    AppController.shared.presentOnboardingIfNeeded()
+                }
+            }
+            .keyboardShortcut("n", modifiers: [.command, .shift])
+        }
+
+        CommandMenu("Stickies") {
+            Button("Show All Stickies") {
+                AppController.shared.showAllStickiesPanel()
+            }
+
+            Button("Sync Now") {
+                Task { await AppController.shared.syncNow() }
+            }
+            .disabled(!auth.isSignedIn)
+
+            Button("Open Stickies Folder in Drive") {
+                AppController.shared.openStickiesFolderInBrowser()
+            }
+            .disabled(!auth.isSignedIn)
+
+            Divider()
+
+            if auth.isSignedIn {
+                Button("Sign Out") { try? auth.signOut() }
+            } else {
+                Button("Sign In with Google...") {
+                    Task { _ = try? await auth.signIn() }
+                }
+            }
+
+            Divider()
+
+            Button("Check for Updates...") {
+                updater.checkForUpdates()
+            }
+            .disabled(!updater.canCheckForUpdates)
+
+            Toggle("Receive Beta Updates", isOn: $updater.betaChannelEnabled)
+
+#if DEBUG
+            Divider()
+
+            Menu("Debug") {
+                Toggle("Show Sticky Size", isOn: $debug.showStickySize)
+
+                Button("Reset All Local Data...") {
+                    let alert = NSAlert()
+                    alert.messageText = "Reset all local data?"
+                    alert.informativeText = "Deletes the local sticky database and signs you out. Google Docs in Drive are left untouched."
+                    alert.alertStyle = .warning
+                    alert.addButton(withTitle: "Reset")
+                    alert.addButton(withTitle: "Cancel")
+                    if alert.runModal() == .alertFirstButtonReturn {
+                        AppController.shared.resetAllLocalData()
+                    }
+                }
+            }
+#endif
+        }
+    }
+}

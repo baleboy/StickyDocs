@@ -29,6 +29,7 @@ struct StickyDocsApp: App {
             MenuBarContent()
         }
         .commands {
+            StickyDocsCommands()
             CommandMenu("Format") {
                 Button("Bold") {
                     NSApp.sendAction(Selector(("toggleBold:")), to: nil, from: nil)
