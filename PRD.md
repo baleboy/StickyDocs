@@ -73,6 +73,7 @@ The sticky is the foreground frontend; the Doc is the durable, shareable, cross-
 - One sticky = one Google Doc.
 - Stickies live in a dedicated Drive folder (default name "Stickies") created by the app on first run.
 - Each sticky-Doc is tagged with Drive `appProperties` (`stickydocs=v1`) so identity survives renames and moves; discovery queries `appProperties`, not folder path.
+- If the user points onboarding at a pre-existing Drive folder, the All Stickies window appears empty: cross-machine discovery is filtered both by the `drive.file` OAuth scope (the app can only see files it created or were opened via the picker) and by the `stickydocs=v1` appProperty tag, so unrelated Docs in that folder are invisible by design.
 
 ### Authentication
 - OAuth 2.0 PKCE installed-app flow with loopback redirect (`http://localhost:<random-port>/callback`).
