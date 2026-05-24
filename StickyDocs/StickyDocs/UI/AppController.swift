@@ -52,7 +52,8 @@ final class AppController: ObservableObject {
             ensureStickiesFolder: { _ = try await folderIdCache.id() },
             isTrashed: { try await driveClient.isTrashed(docId: $0) },
             listTaggedStickies: {
-                let files = try await driveClient.listTaggedStickies()
+                let folderId = try await folderIdCache.id()
+                let files = try await driveClient.listTaggedStickies(inFolder: folderId)
                 return files.map { ($0.id, $0.name) }
             }
         )
@@ -79,8 +80,16 @@ final class AppController: ObservableObject {
             .sink { [weak self] signedIn in
                 guard signedIn else { return }
                 Task { @MainActor in
-                    self?.presentFolderChoiceIfNeeded()
-                    await self?.syncNow()
+                    guard let self else { return }
+                    // If onboarding is still on screen, skip the auto-sync —
+                    // syncNow() touches ensureStickiesFolder, which would race
+                    // with completeOnboarding() and auto-create a "Stickies"
+                    // folder before the user has picked a name. The folder
+                    // choice step (or completeOnboarding) handles the first
+                    // sync itself.
+                    self.presentFolderChoiceIfNeeded()
+                    guard self.isOnboardingComplete else { return }
+                    await self.syncNow()
                 }
             }
 
@@ -132,6 +141,9 @@ final class AppController: ObservableObject {
         try store.setAppState(key: OnboardingKeys.complete, value: "1")
         folderIdCache.refreshFromStore()
         isOnboardingComplete = true
+        // Auto-sync is suppressed on sign-in while onboarding is showing, so
+        // kick off the first sync here once the chosen folder is committed.
+        await syncNow()
     }
 
     func newSticky() throws -> Sticky {

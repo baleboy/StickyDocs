@@ -38,6 +38,13 @@ final class SyncEngine {
     private var debouncedPushTasks: [String: Task<Void, Never>] = [:]
     static let typingDebounce: Duration = .milliseconds(1500)
 
+    // Per-sticky serialization for push(). Without this, a debounced push that
+    // is already mid-await (e.g. inside createDoc) can race with a blur/close
+    // flush: both read googleDocId == nil and both call createDoc, producing
+    // two Docs in Drive while only one id wins in the store. Chaining each
+    // push through the previous in-flight task forces them to run sequentially.
+    private var pushInFlight: [String: Task<Void, Never>] = [:]
+
     init(store: StickyStore, deps: Dependencies) {
         self.store = store
         self.deps = deps
@@ -183,6 +190,24 @@ final class SyncEngine {
     }
 
     func push(stickyId: String) async throws {
+        let previous = pushInFlight[stickyId]
+        final class ErrorBox { var error: Error? }
+        let box = ErrorBox()
+        let task = Task { @MainActor [weak self] in
+            _ = await previous?.value
+            guard let self else { return }
+            do {
+                try await self.pushSerialized(stickyId: stickyId)
+            } catch {
+                box.error = error
+            }
+        }
+        pushInFlight[stickyId] = task
+        await task.value
+        if let error = box.error { throw error }
+    }
+
+    private func pushSerialized(stickyId: String) async throws {
         do {
             try await pushInner(stickyId: stickyId)
         } catch {

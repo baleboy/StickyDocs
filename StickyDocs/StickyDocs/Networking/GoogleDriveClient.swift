@@ -9,13 +9,16 @@ struct GoogleDriveClient {
         let mimeType: String
     }
 
-    // Cross-machine restore: returns every Doc this OAuth client previously
-    // created and tagged with appProperties.stickydocs=v1, regardless of which
-    // device created it. drive.file scope is per OAuth client, not per device,
-    // so signing in on a second Mac surfaces the stickies created on the first.
-    func listTaggedStickies() async throws -> [DriveFile] {
+    // Cross-machine restore: returns Docs this OAuth client previously created
+    // and tagged with appProperties.stickydocs=v1, scoped to a single parent
+    // folder. drive.file scope is per OAuth client, not per device, so signing
+    // in on a second Mac surfaces the stickies created on the first — but only
+    // those that live in the user's currently-configured Stickies folder, so a
+    // renamed/abandoned folder's leftover Docs don't get re-imported.
+    func listTaggedStickies(inFolder folderId: String) async throws -> [DriveFile] {
         let token = try await accessToken()
-        let query = "appProperties has { key='stickydocs' and value='v1' } and mimeType='application/vnd.google-apps.document' and trashed=false"
+        let escaped = folderId.replacingOccurrences(of: "'", with: "\\'")
+        let query = "appProperties has { key='stickydocs' and value='v1' } and mimeType='application/vnd.google-apps.document' and '\(escaped)' in parents and trashed=false"
         var comps = URLComponents(string: "https://www.googleapis.com/drive/v3/files")!
         comps.queryItems = [
             .init(name: "q", value: query),
