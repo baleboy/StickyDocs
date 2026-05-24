@@ -50,14 +50,6 @@ struct MenuBarContent: View {
 
         Toggle("Receive Alpha Updates", isOn: $updater.alphaChannelEnabled)
 
-        Divider()
-
-        Button("Report an Issue...") {
-            if let url = URL(string: "https://github.com/baleboy/StickyDocs/issues") {
-                NSWorkspace.shared.open(url)
-            }
-        }
-
 #if DEBUG
         Divider()
 
@@ -98,6 +90,14 @@ struct StickyDocsCommands: Commands {
     @ObservedObject private var updater = Updater.shared
 
     var body: some Commands {
+        CommandGroup(replacing: .help) {
+            Button("Report an Issue...") {
+                if let url = URL(string: "https://github.com/baleboy/StickyDocs/issues") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+        }
+
         CommandGroup(replacing: .newItem) {
             Button("New Sticky") {
                 if app.isOnboardingComplete {
@@ -142,14 +142,6 @@ struct StickyDocsCommands: Commands {
             .disabled(!updater.canCheckForUpdates)
 
             Toggle("Receive Alpha Updates", isOn: $updater.alphaChannelEnabled)
-
-        Divider()
-
-        Button("Report an Issue...") {
-            if let url = URL(string: "https://github.com/baleboy/StickyDocs/issues") {
-                NSWorkspace.shared.open(url)
-            }
-        }
 
 #if DEBUG
             Divider()
