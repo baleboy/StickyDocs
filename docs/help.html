@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StickyDocs Help</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --fg: #1d1d1f;
+    --muted: #6e6e73;
+    --bg: #fbfbfd;
+    --card: #ffffff;
+    --border: #e5e5ea;
+    --accent: #b8860b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fg: #f5f5f7;
+      --muted: #a1a1a6;
+      --bg: #1d1d1f;
+      --card: #2c2c2e;
+      --border: #3a3a3c;
+      --accent: #f0c674;
+    }
+  }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+  }
+  main {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 48px 24px 96px;
+  }
+  h1 {
+    font-size: 32px;
+    margin: 0 0 8px;
+    letter-spacing: -0.01em;
+  }
+  .tagline {
+    color: var(--muted);
+    font-size: 17px;
+    margin: 0 0 40px;
+  }
+  h2 {
+    font-size: 20px;
+    margin: 40px 0 12px;
+    letter-spacing: -0.005em;
+  }
+  p, ul, ol { margin: 0 0 12px; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 4px 0; }
+  code, kbd {
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.92em;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  hr {
+    border: 0;
+    border-top: 1px solid var(--border);
+    margin: 40px 0;
+  }
+  footer {
+    color: var(--muted);
+    font-size: 13px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>StickyDocs Help</h1>
+  <p class="tagline">Sticky notes on your desktop, each one backed by a Google Doc in your Drive.</p>
+
+  <h2>Getting started</h2>
+  <ol>
+    <li><strong>Sign in.</strong> First launch shows a welcome screen and asks you to sign in with Google. The app uses the <code>drive.file</code> scope, which means it can only see Docs it creates itself &mdash; not the rest of your Drive.</li>
+    <li><strong>Pick a folder.</strong> After sign-in, choose a name for the Drive folder where your stickies will live (default: &ldquo;Stickies&rdquo;). The folder is created on first sync.</li>
+    <li><strong>Create a sticky.</strong> Click the StickyDocs icon in the menu bar &rarr; <strong>New Sticky</strong>, or use <kbd>&#8679;&#8984;N</kbd>.</li>
+  </ol>
+
+  <h2>Day-to-day use</h2>
+  <ul>
+    <li><strong>Menu bar icon.</strong> All actions (New Sticky, Show All Stickies, Sync Now, Open Stickies Folder in Drive, Sign In/Out, Updates) live in the menu bar dropdown.</li>
+    <li><strong>All Stickies window.</strong> Lists every sticky and lets you re-open ones you&rsquo;ve previously closed.</li>
+    <li><strong>Formatting.</strong> Bold (<kbd>&#8984;B</kbd>), Italic (<kbd>&#8984;I</kbd>), Underline (<kbd>&#8984;U</kbd>), bulleted list, numbered list. No headings or images in v1.</li>
+    <li><strong>Closing a sticky.</strong> Closing the window hides the sticky but keeps its data; reopen it from All Stickies.</li>
+    <li><strong>Deleting a sticky.</strong> Right-click &rarr; Delete. You&rsquo;ll be asked whether to also delete the Doc in Drive.</li>
+  </ul>
+
+  <h2>How sync works</h2>
+  <ul>
+    <li>Each sticky is one Google Doc in your chosen folder. The Doc is created on first edit &mdash; empty notes don&rsquo;t litter your Drive.</li>
+    <li>Edits push to Drive after 1.5 seconds of inactivity, and immediately when the sticky loses focus or closes.</li>
+    <li>Edits made on docs.google.com pull back into the sticky on app launch and any time you trigger Sync Now.</li>
+    <li><strong>Sync Now</strong> (menu bar) forces a full round-trip immediately.</li>
+  </ul>
+
+  <h2>Cross-machine</h2>
+  <p>Sign in with the same Google account on a second Mac and the app will discover the stickies you created on the first one. Discovered stickies start closed &mdash; open the ones you want from All Stickies.</p>
+
+  <h2>Unlinked stickies</h2>
+  <p>If a sticky&rsquo;s Doc gets deleted or trashed in Drive, the sticky stays on your Mac but its status dot turns red and the banner explains what happened. Right-click &rarr; <strong>Re-create Doc in Drive</strong> to provision a new Doc with the current local content.</p>
+
+  <h2>Conflicts</h2>
+  <p>If both sides change a sticky between syncs, remote wins and the local version is stashed in a backup. Right-click &rarr; <strong>Restore Backup</strong> to swap it back.</p>
+
+  <h2>Updates</h2>
+  <p>The app auto-checks for updates daily. To get pre-release builds, toggle <strong>Receive Alpha Updates</strong> in the menu bar. Alpha builds are less stable than stable ones &mdash; opt in only if you&rsquo;re comfortable with that.</p>
+
+  <h2>Privacy</h2>
+  <ul>
+    <li>Tokens are stored in the macOS Keychain.</li>
+    <li>The <code>drive.file</code> scope means the app has access only to Docs it created and folders it manages. It cannot read the rest of your Drive.</li>
+    <li>No analytics, no telemetry, no third-party services beyond Google&rsquo;s APIs.</li>
+  </ul>
+
+  <h2>Reporting a bug</h2>
+  <p>Help &rarr; <strong>Report an Issue&hellip;</strong> opens the <a href="https://github.com/baleboy/StickyDocs/issues">GitHub issues page</a>. Include your macOS version, the app version (About StickyDocs shows it), and steps to reproduce.</p>
+
+  <hr>
+  <footer>
+    StickyDocs &middot; <a href="https://github.com/baleboy/StickyDocs">github.com/baleboy/StickyDocs</a>
+  </footer>
+</main>
+</body>
+</html>

@@ -91,6 +91,15 @@ struct StickyDocsCommands: Commands {
 
     var body: some Commands {
         CommandGroup(replacing: .help) {
+            Button("StickyDocs Help") {
+                if let url = URL(string: "https://baleboy.github.io/StickyDocs/help.html") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+            .keyboardShortcut("?", modifiers: .command)
+
+            Divider()
+
             Button("Report an Issue...") {
                 if let url = URL(string: "https://github.com/baleboy/StickyDocs/issues") {
                     NSWorkspace.shared.open(url)
