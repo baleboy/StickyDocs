@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+    <defs>
+      <clipPath id="clip"><rect x="0" y="0" width="1024" height="1024" rx="229" ry="229"></rect></clipPath>
+      <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#f3e1a8"></stop><stop offset="1" stop-color="#e6c878"></stop>
+      </linearGradient>
+      <linearGradient id="paperShade" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#fff" stop-opacity="0"></stop>
+        <stop offset="1" stop-color="#000" stop-opacity="0.05"></stop>
+      </linearGradient>
+      <filter id="grain" x="0" y="0" width="1" height="1">
+        <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="3"></feTurbulence>
+        <feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.07 0"></feColorMatrix>
+        <feComposite in2="SourceGraphic" operator="in"></feComposite>
+      </filter>
+      <linearGradient id="hl" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#fff" stop-opacity="0.16"></stop>
+        <stop offset="0.5" stop-color="#fff" stop-opacity="0"></stop>
+      </linearGradient>
+    </defs>
+    <g clip-path="url(#clip)">
+      <rect x="0" y="0" width="1024" height="1024" fill="url(#bg)"></rect>
+      <circle cx="280" cy="240" r="600" fill="#fff" opacity="0.09000000000000001"></circle>
+      
+    <g transform="translate(512 530) rotate(-7) translate(-310 -350)">
+      <rect x="6" y="14" width="620" height="700" rx="18" fill="#000" opacity="0.16200000000000003"></rect>
+      <rect x="0" y="0" width="620" height="700" rx="18" fill="#a8bf8d"></rect>
+      <rect x="0" y="0" width="620" height="700" rx="18" fill="url(#paperShade)"></rect>
+      <rect x="0" y="0" width="620" height="700" rx="18" fill="none" stroke="rgba(0,0,0,0.07)" stroke-width="1.5"></rect>
+    </g>
+      
+    <g transform="translate(498 518) rotate(4) translate(-310 -350)">
+      <rect x="6" y="14" width="620" height="700" rx="18" fill="#000" opacity="0.15300000000000002"></rect>
+      <rect x="0" y="0" width="620" height="700" rx="18" fill="#e89878"></rect>
+      <rect x="0" y="0" width="620" height="700" rx="18" fill="url(#paperShade)"></rect>
+      <rect x="0" y="0" width="620" height="700" rx="18" fill="none" stroke="rgba(0,0,0,0.07)" stroke-width="1.5"></rect>
+    </g>
+      
+    <g transform="translate(522 502) rotate(-2) translate(-310 -350)">
+      <rect x="4" y="14" width="620" height="700" rx="18" fill="#000" opacity="0.18000000000000002"></rect>
+      <rect x="0" y="0" width="620" height="700" rx="18" fill="#fefaf0"></rect>
+      <rect x="0" y="0" width="620" height="700" rx="18" filter="url(#grain)" opacity="0.4"></rect>
+      <rect x="0" y="0" width="620" height="700" rx="18" fill="url(#paperShade)"></rect>
+      <rect x="0" y="0" width="620" height="700" rx="18" fill="none" stroke="rgba(0,0,0,0.07)" stroke-width="1.5"></rect>
+      <g stroke="#3a2814" stroke-width="14" stroke-linecap="round" fill="none" opacity="0.82">
+        <path d="M 60 200 q 70 -12 160 -4 t 160 4 t 110 -2"></path><path d="M 60 310 q 70 12 160 4 t 160 -4 t 50 2"></path><path d="M 60 420 q 70 -12 160 -4 t 160 4 t 130 -2"></path>
+      </g>
+      <circle cx="590" cy="420" r="9" fill="#3a2814" opacity="0.7"></circle>
+      
+        <g transform="translate(200 -28)">
+          <rect x="0" y="0" width="220" height="68" fill="rgba(255,255,255,0.55)" stroke="rgba(0,0,0,0.07)"></rect>
+          <g stroke="rgba(0,0,0,0.07)" stroke-width="1">
+            <line x1="6" y1="6" x2="214" y2="6"></line>
+            <line x1="6" y1="62" x2="214" y2="62"></line>
+          </g>
+          <rect x="0" y="0" width="220" height="68" fill="#fff" opacity="0.18"></rect>
+        </g>
+      
+    </g>
+      <rect x="0" y="0" width="1024" height="1024" fill="url(#hl)"></rect>
+    </g>
+    <rect x="0.5" y="0.5" width="1023" height="1023" rx="229" ry="229" fill="none" stroke="rgba(0,0,0,0.15)" stroke-width="1"></rect>
+  </svg>
