@@ -174,6 +174,17 @@ final class AppController: ObservableObject {
         }
     }
 
+    // First-launch ergonomics: if the user has no stickies at all, drop a
+    // blank one on screen so the app doesn't open to nothing. Skipped when
+    // onboarding hasn't completed (a fresh sign-in may still discover
+    // existing stickies from another Mac via discoverRemoteStickies).
+    func createInitialStickyIfNeeded() throws {
+        guard isOnboardingComplete else { return }
+        let active = try store.allActive()
+        guard active.isEmpty else { return }
+        _ = try newSticky()
+    }
+
     func syncAllPending() async {
         let pending = (try? store.pendingPushes()) ?? []
         NSLog("[StickyDocs] syncAllPending: \(pending.count) pending sticky/stickies")

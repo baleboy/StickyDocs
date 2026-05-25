@@ -100,6 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             AppController.shared.presentOnboardingIfNeeded()
             try? AppController.shared.restoreOpenStickies()
+            try? AppController.shared.createInitialStickyIfNeeded()
             await AppController.shared.pullAllFromDrive()
         }
     }
