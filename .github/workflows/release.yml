@@ -230,17 +230,88 @@ jobs:
           echo "zip_name=$(basename "$OUT")" >> "$GITHUB_OUTPUT"
           ls -lh "$OUT"
 
+      - name: Install dmgbuild
+        run: pipx install dmgbuild
+
+      - name: Package DMG
+        id: dmg
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          if [ -z "$V" ]; then V="dev"; fi
+          OUT="$RUNNER_TEMP/${APP_NAME}-${V}.dmg"
+          APP_PATH="$EXPORT_DIR/${APP_NAME}.app" dmgbuild \
+            -s scripts/dmg-settings.py \
+            "${APP_NAME}" \
+            "$OUT"
+          echo "dmg_path=$OUT" >> "$GITHUB_OUTPUT"
+          echo "dmg_name=$(basename "$OUT")" >> "$GITHUB_OUTPUT"
+          ls -lh "$OUT"
+
+      # Sign the DMG so Gatekeeper doesn't warn when a user double-clicks
+      # the downloaded .dmg (separate from the app inside, which was already
+      # signed and stapled above).
+      - name: Sign DMG
+        if: steps.signing.outputs.sign == 'true'
+        run: |
+          codesign --force --sign "Developer ID Application" --timestamp \
+            "${{ steps.dmg.outputs.dmg_path }}"
+          codesign --verify --verbose=2 "${{ steps.dmg.outputs.dmg_path }}"
+
+      - name: Notarize and staple DMG
+        if: steps.signing.outputs.sign == 'true' && steps.signing.outputs.notarize == 'true'
+        env:
+          AC_API_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
+          AC_API_ISSUER_ID: ${{ secrets.AC_API_ISSUER_ID }}
+          DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
+        run: |
+          set +e
+          SUBMIT_OUT=$(xcrun notarytool submit "$DMG_PATH" \
+            --key "$AC_API_KEY_PATH" \
+            --key-id "$AC_API_KEY_ID" \
+            --issuer "$AC_API_ISSUER_ID" \
+            --wait 2>&1)
+          SUBMIT_RC=$?
+          echo "$SUBMIT_OUT"
+          SUBMISSION_ID=$(echo "$SUBMIT_OUT" | awk '/^  id:/ {print $2; exit}')
+          if [ $SUBMIT_RC -ne 0 ] || echo "$SUBMIT_OUT" | grep -q 'status: Invalid'; then
+            echo "::group::Notarization log for $SUBMISSION_ID"
+            xcrun notarytool log "$SUBMISSION_ID" \
+              --key "$AC_API_KEY_PATH" \
+              --key-id "$AC_API_KEY_ID" \
+              --issuer "$AC_API_ISSUER_ID" || true
+            echo "::endgroup::"
+            exit 1
+          fi
+          set -e
+          xcrun stapler staple "$DMG_PATH"
+          xcrun stapler validate "$DMG_PATH"
+
+      # Stable-filename copy so `releases/latest/download/StickyDocs.dmg`
+      # always resolves to the newest release. The versioned DMG remains
+      # the primary asset.
+      - name: Duplicate DMG under stable name
+        id: dmg_stable
+        run: |
+          STABLE="$RUNNER_TEMP/${APP_NAME}.dmg"
+          cp "${{ steps.dmg.outputs.dmg_path }}" "$STABLE"
+          echo "stable_path=$STABLE" >> "$GITHUB_OUTPUT"
+
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.package.outputs.zip_name }}
-          path: ${{ steps.package.outputs.zip_path }}
+          path: |
+            ${{ steps.package.outputs.zip_path }}
+            ${{ steps.dmg.outputs.dmg_path }}
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.package.outputs.zip_path }}
+          files: |
+            ${{ steps.package.outputs.zip_path }}
+            ${{ steps.dmg.outputs.dmg_path }}
+            ${{ steps.dmg_stable.outputs.stable_path }}
           draft: false
           generate_release_notes: true
 

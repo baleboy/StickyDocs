@@ -60,5 +60,8 @@ Secrets.swift
 # Logs
 *.log
 
+# Local DMG output (CI uploads its own)
+dist/
+
 # Local manual test run notes (TESTPLAN.md is the canonical, committed one)
 testrun-*.md
