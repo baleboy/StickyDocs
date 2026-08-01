@@ -34,6 +34,13 @@ final class Updater: ObservableObject {
                          forKey: Self.alphaChannelDefaultsKey)
             defaults.removeObject(forKey: Self.legacyBetaChannelDefaultsKey)
         }
+        // Default ON while alpha is the only channel we publish. Every appcast
+        // item is currently tagged `alpha`; with the toggle off Sparkle only
+        // considers untagged items, so a fresh install would check for updates
+        // forever and never find one. Flip this back to `false` when the first
+        // untagged (stable) item ships. Registered *after* the migration above
+        // so `object(forKey:)` there still sees a genuinely unset key as nil.
+        defaults.register(defaults: [Self.alphaChannelDefaultsKey: true])
         self.alphaChannelEnabled = defaults.bool(forKey: Self.alphaChannelDefaultsKey)
         self.controller = SPUStandardUpdaterController(
             startingUpdater: true,

@@ -148,13 +148,16 @@ The debug harness `Window("StickyDocs (Debug)")` only exists in DEBUG builds. In
 
 ## 16. Sparkle auto-update
 
-Updates ship via [Sparkle](https://sparkle-project.org/). The appcast lives at https://baleboy.github.io/StickyDocs/appcast.xml. Stable users only see items without a channel tag; beta users see items tagged `<sparkle:channel>beta</sparkle:channel>`. The git-tag convention drives the channel: bare semver (`v1.0.0`) → stable, pre-release (`v1.0.0-beta.1`) → beta.
+Updates ship via [Sparkle](https://sparkle-project.org/). The appcast lives at https://baleboy.github.io/StickyDocs/appcast.xml. Stable users only see items without a channel tag; alpha users see items tagged `<sparkle:channel>alpha</sparkle:channel>`. The git-tag convention drives the channel: bare semver (`v1.0.0`) → stable, pre-release (`v1.0.0-alpha.1`) → alpha.
+
+**"Receive Alpha Updates" currently defaults to ON** (`Updater.swift`, registered default). Every published appcast item is alpha-tagged today, so with the toggle off a fresh install would never be offered anything. Flip the registered default back to `false` — and update the two channel steps below — once the first untagged stable item ships.
 
 - [ ] **Check for Updates — no update available.** From the menu bar, click **Check for Updates...** when the installed version matches the latest applicable appcast item. Sparkle's "You're up to date" sheet appears.
 - [ ] **Check for Updates — update available.** Install an older version (or temporarily bump the appcast version), click **Check for Updates...**. Sparkle's update sheet appears. Install → app relaunches on the new version. `CFBundleShortVersionString` in `Info.plist` matches the appcast item.
 - [ ] **Background check.** Quit and relaunch. If `SUScheduledCheckInterval` (86400s) has elapsed since the last check and an update is available, Sparkle prompts on its own without user action.
-- [ ] **Beta channel — opt out (default).** With "Receive Beta Updates" off, a beta-tagged appcast item must NOT trigger an update. Click **Check for Updates...** — only untagged items are considered.
-- [ ] **Beta channel — opt in.** Tick **Receive Beta Updates** in the menu, then click **Check for Updates...**. The beta item is now offered. Toggle off again — beta items are filtered out on the next check.
+- [ ] **Alpha channel — on by default on a fresh install.** Clear the pref (`defaults delete com.baleware.StickyDocs ReceiveAlphaUpdates`) and relaunch. **Receive Alpha Updates** shows ticked in the menu, and **Check for Updates...** offers the latest alpha-tagged item.
+- [ ] **Alpha channel — opt out.** Untick **Receive Alpha Updates**, then click **Check for Updates...**. Alpha items are filtered out — with no untagged items published, Sparkle reports "You're up to date". Tick it again and the alpha item is offered on the next check.
+- [ ] **Beta → alpha pref migration.** Set the old key only (`defaults delete com.baleware.StickyDocs ReceiveAlphaUpdates; defaults write com.baleware.StickyDocs ReceiveBetaUpdates -bool NO`) and relaunch. The toggle reads **off** — an explicit opt-out under the old name survives the rename and is not overridden by the new default-on. The old key is gone afterwards (`defaults read com.baleware.StickyDocs ReceiveBetaUpdates` errors).
 - [ ] **Signature mismatch refuses install.** Replace the zip on a GitHub release with a corrupted copy (don't re-sign). Click **Check for Updates...**. Sparkle downloads it, fails EdDSA verification, and refuses to install. The installed version stays put.
 - [ ] **Sandbox / XPC.** Confirm the install completes without Gatekeeper or sandbox warnings. The app is sandboxed; Sparkle's Installer Launcher XPC reaches its mach service via the `$(PRODUCT_BUNDLE_IDENTIFIER)-spks` and `-spki` temporary-exception entitlements.
 
