@@ -4,6 +4,10 @@
 # nor the tag is pushed — review with `git log -1` and `git show v<version>`,
 # then push with `git push origin main && git push origin v<version>`.
 #
+# Before tagging it fetches origin and rebases main if it's behind, because CI
+# pushes an appcast commit to main on every release. Creating the tag *after*
+# that rebase also avoids stranding it on a commit that gets rewritten.
+#
 # The CI workflow (.github/workflows/release.yml) builds on the tag and
 # overrides MARKETING_VERSION/CURRENT_PROJECT_VERSION at archive time, so the
 # release artifact carries the tag version regardless. This script's job is
@@ -43,9 +47,35 @@ if [ -n "$(git status --porcelain)" ]; then
   exit 1
 fi
 
-if git rev-parse "$TAG" >/dev/null 2>&1; then
-  echo "error: tag $TAG already exists locally" >&2
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+if [ "$BRANCH" != "main" ]; then
+  echo "error: on branch '$BRANCH', expected main — releases are cut from main" >&2
   exit 1
+fi
+
+# Sync with origin before tagging. The release workflow's "Publish appcast"
+# step commits docs/appcast.xml back to main, so local main goes stale after
+# *every* release. Tagging on a stale main would cut a release that's missing
+# the previous release's appcast entry, and the next CI publish would then be
+# racing an out-of-date branch. Rebase rather than merge to keep the linear
+# history this repo has.
+echo "Fetching origin..."
+git fetch --prune origin main "refs/tags/*:refs/tags/*"
+
+if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+  echo "error: tag $TAG already exists (local or on origin)" >&2
+  exit 1
+fi
+
+if ! git merge-base --is-ancestor origin/main HEAD; then
+  BEHIND=$(git rev-list --count HEAD..origin/main)
+  echo "Local main is $BEHIND commit(s) behind origin/main — rebasing..."
+  if ! git rebase origin/main; then
+    git rebase --abort 2>/dev/null || true
+    echo "error: rebase onto origin/main failed — resolve by hand, then re-run" >&2
+    exit 1
+  fi
+  echo "Rebased onto origin/main."
 fi
 
 CURRENT=$(grep -m1 -E "MARKETING_VERSION = " "$PBXPROJ" | sed -E 's/.*MARKETING_VERSION = ([^;]+);.*/\1/')
