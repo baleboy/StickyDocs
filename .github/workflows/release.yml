@@ -141,7 +141,28 @@ jobs:
           fi
 
           IDENTITY="Developer ID Application"
-          ENTITLEMENTS="StickyDocs/StickyDocs/StickyDocs.entitlements"
+
+          # Expand Xcode build-setting variables in the entitlements plist.
+          # Xcode's own signing step does this; bare `codesign --entitlements`
+          # does not, and we sign post-hoc (CODE_SIGNING_ALLOWED=NO above).
+          # Shipping the literal "$(PRODUCT_BUNDLE_IDENTIFIER)-spks" silently
+          # breaks Sparkle's sandboxed installer: the mach-lookup exception
+          # names a service that doesn't exist, so the app can't reach its own
+          # installer XPC and every update dies with "failed to probe status
+          # service". See the -spks/-spki assertion below.
+          BUNDLE_ID=$(defaults read "$APP_PATH/Contents/Info" CFBundleIdentifier)
+          echo "Bundle id: $BUNDLE_ID"
+          ENTITLEMENTS="$RUNNER_TEMP/StickyDocs.expanded.entitlements"
+          sed -e "s|\$(PRODUCT_BUNDLE_IDENTIFIER)|$BUNDLE_ID|g" \
+              -e "s|\${PRODUCT_BUNDLE_IDENTIFIER}|$BUNDLE_ID|g" \
+              StickyDocs/StickyDocs/StickyDocs.entitlements > "$ENTITLEMENTS"
+          if grep -q '\$[({]' "$ENTITLEMENTS"; then
+            echo "::error::Unexpanded build-setting variable left in entitlements:"
+            grep -n '\$[({]' "$ENTITLEMENTS"
+            exit 1
+          fi
+          plutil -lint "$ENTITLEMENTS"
+          cat "$ENTITLEMENTS"
 
           # Embed the Developer ID provisioning profile. Required for sandboxed
           # apps distributed outside the App Store; launchd refuses to spawn
@@ -185,6 +206,22 @@ jobs:
 
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
           codesign -dvv "$APP_PATH" 2>&1 | sed 's/^/  /'
+
+          # Assert the sandbox mach-lookup exceptions actually made it into the
+          # signature under the real bundle id. Without these two, Sparkle can
+          # download and verify an update and then fail to install it — a
+          # failure mode invisible to codesign/spctl/notarytool, all of which
+          # pass happily on a build that can never self-update.
+          SEALED=$(codesign -d --entitlements - --xml "$APP_PATH" 2>/dev/null \
+            | plutil -convert xml1 -o - -)
+          for svc in "${BUNDLE_ID}-spks" "${BUNDLE_ID}-spki"; do
+            if ! grep -qF "<string>${svc}</string>" <<<"$SEALED"; then
+              echo "::error::Sealed entitlements missing mach-lookup exception '${svc}'."
+              echo "$SEALED"
+              exit 1
+            fi
+            echo "  OK: mach-lookup exception ${svc}"
+          done
 
       - name: Notarize and staple
         if: steps.signing.outputs.sign == 'true' && steps.signing.outputs.notarize == 'true'

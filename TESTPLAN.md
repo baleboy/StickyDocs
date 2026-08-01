@@ -160,6 +160,12 @@ Updates ship via [Sparkle](https://sparkle-project.org/). The appcast lives at h
 - [ ] **Beta → alpha pref migration.** Set the old key only (`defaults delete com.baleware.StickyDocs ReceiveAlphaUpdates; defaults write com.baleware.StickyDocs ReceiveBetaUpdates -bool NO`) and relaunch. The toggle reads **off** — an explicit opt-out under the old name survives the rename and is not overridden by the new default-on. The old key is gone afterwards (`defaults read com.baleware.StickyDocs ReceiveBetaUpdates` errors).
 - [ ] **Signature mismatch refuses install.** Replace the zip on a GitHub release with a corrupted copy (don't re-sign). Click **Check for Updates...**. Sparkle downloads it, fails EdDSA verification, and refuses to install. The installed version stays put.
 - [ ] **Sandbox / XPC.** Confirm the install completes without Gatekeeper or sandbox warnings. The app is sandboxed; Sparkle's Installer Launcher XPC reaches its mach service via the `$(PRODUCT_BUNDLE_IDENTIFIER)-spks` and `-spki` temporary-exception entitlements.
+- [ ] **Entitlement variables are expanded in the shipped build.** Must be run on a **CI-produced** artifact, not a local Xcode build — the two sign differently. Download the release zip, unpack, and run:
+
+      codesign -d --entitlements - --xml StickyDocs.app | plutil -p - | grep spk
+
+  Both entries must read `com.baleware.StickyDocs-spks` / `-spki`. A literal `$(PRODUCT_BUNDLE_IDENTIFIER)-spks` means the update will download and verify and then fail to install with "failed to probe status service" in the Sparkle log. `release.yml` asserts this at sign time, but check it by hand after any change to the signing steps — `codesign`, `spctl`, and `notarytool` all pass on a build with this defect.
+- [ ] **Read the Sparkle log when an update fails.** `/usr/bin/log show --last 1h --predicate 'subsystem == "org.sparkle-project.Sparkle"' --info --debug`. The UI error text is generic; the real cause is here.
 
 ---
 
