@@ -9,7 +9,22 @@ on macOS.
 
 ## 0. First-run onboarding
 
-- [ ] **Fresh install — intro appears.** Delete `~/Library/Application Support/StickyDocs/stickies.sqlite` (or use Debug → Reset All Local Data, then relaunch). Launch the app. An onboarding window appears titled "Welcome to StickyDocs" with three bullet points and a **Continue** button.
+**Resetting to a first-run state.** The app is sandboxed, so its data lives in the container, *not* in `~/Library/Application Support`. A stale empty `~/Library/Application Support/StickyDocs/stickies.sqlite` may exist from pre-sandbox builds — deleting that one does nothing. Quit the app first (menu bar → Quit; a running app rewrites its state on exit), then:
+
+```bash
+# Local state: stickies, onboarding flag, cached folder id, prefs, OAuth cookies
+rm -rf ~/Library/Containers/com.baleware.StickyDocs
+# Refresh token (note the service is com.balenet, not com.baleware)
+security delete-generic-password -s "com.balenet.StickyDocs.GoogleOAuth" -a default
+```
+
+The onboarding gate is `onboarding_complete` in the DB's `app_state` table (`AppController.swift:70`), so deleting the sqlite alone is enough to re-trigger onboarding; the wider wipe above also clears Sparkle's state and the signed-in session.
+
+**This does not reset Drive.** `discoverRemoteStickies()` re-imports every Doc tagged `appProperties.stickydocs=v1`, so a local wipe plus the same Google account reproduces *"reinstall with existing data"* — not a new user. For a true new-user run, sign in with a Google account that has never used StickyDocs. Both are worth testing; they differ (a real new user sees no import, an existing one gets stickies restored with `isOpen=false`).
+
+**Gatekeeper first-open** is only exercised on a freshly *downloaded* DMG — the quarantine attribute is what triggers it. Testing a locally built or already-unquarantined copy skips that step entirely.
+
+- [ ] **Fresh install — intro appears.** Reset as above, then launch the app. An onboarding window appears titled "Welcome to StickyDocs" with three bullet points and a **Continue** button.
 - [ ] **Continue → sign-in step.** Click Continue. View flips to "Sign in with Google" with **Skip for now** and **Sign in with Google** buttons.
 - [ ] **Happy path — create new folder.** Click **Sign in with Google**, complete OAuth. View flips to "Choose your Stickies folder" with a text field pre-filled `Stickies`. Click **Finish**. Window closes. Open Drive — a folder named `Stickies` exists. Create a sticky and push — the Doc lands in `Stickies/`.
 - [ ] **Custom folder name.** Repeat fresh install. On the folder step, change name to e.g. `Notes`. Finish. Drive contains a `Notes/` folder; pushed Docs land there.
@@ -17,7 +32,7 @@ on macOS.
 - [ ] **Sign-in after skip → folder prompt.** After skipping, sign in via menu bar "Sign In with Google...". A folder-choice window appears (jumps straight to the folder step). Pick `Stickies` and Finish. First push lands in `Stickies/`.
 - [ ] **Close onboarding window mid-flow = skip.** Fresh install. Click the red close button on the intro window. Treated as skip: onboarding does NOT re-appear on relaunch; first push later auto-creates `Stickies/`.
 - [ ] **New Sticky before onboarding finishes.** Fresh install — onboarding window visible. Click menu bar **New Sticky** instead of completing onboarding. Behavior: brings the onboarding window forward (does NOT create a sticky).
-- [ ] **Reset re-triggers onboarding.** Complete onboarding. Run Debug → Reset All Local Data → relaunch. Onboarding window appears again.
+- [ ] **Reset re-triggers onboarding.** Complete onboarding. Run Debug → Reset All Local Data → relaunch. Onboarding window appears again. (The Debug submenu is `#if DEBUG` only — on an installed release build use the `rm -rf` reset above instead.)
 - [ ] **Empty folder name rejected.** On the folder step, clear the text field and click Finish. Error message appears; window stays.
 
 ## 1. Auth
