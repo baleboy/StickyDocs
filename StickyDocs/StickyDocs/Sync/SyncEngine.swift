@@ -15,6 +15,22 @@ import AppKit
 @MainActor
 final class SyncEngine {
 
+    // A tagged Doc in Drive, as seen by discovery. Timestamps are optional
+    // because Drive may omit them and older fakes don't supply them.
+    struct RemoteSticky {
+        let id: String
+        let name: String
+        var modifiedTime: Date?
+        var createdTime: Date?
+
+        init(id: String, name: String, modifiedTime: Date? = nil, createdTime: Date? = nil) {
+            self.id = id
+            self.name = name
+            self.modifiedTime = modifiedTime
+            self.createdTime = createdTime
+        }
+    }
+
     struct Dependencies {
         var createDoc: (_ title: String) async throws -> String                          // -> docId
         var exportAsHTML: (_ docId: String) async throws -> String
@@ -23,10 +39,12 @@ final class SyncEngine {
         var deleteDoc: (_ docId: String) async throws -> Void
         var ensureStickiesFolder: () async throws -> Void = {}
         var isTrashed: (_ docId: String) async throws -> Bool = { _ in false }
-        // Cross-machine restore: returns (docId, title) for every Doc this
-        // OAuth client previously tagged with stickydocs=v1. Default returns
-        // empty so unit tests don't need to mock discovery.
-        var listTaggedStickies: () async throws -> [(id: String, name: String)] = { [] }
+        // Cross-machine restore: returns (docId, title, Drive timestamps) for
+        // every Doc this OAuth client previously tagged with stickydocs=v1.
+        // The timestamps let imported stickies keep their real edit recency
+        // instead of collapsing to import order in the All Stickies list.
+        // Default returns empty so unit tests don't need to mock discovery.
+        var listTaggedStickies: () async throws -> [RemoteSticky] = { [] }
     }
 
     let store: StickyStore
@@ -139,7 +157,7 @@ final class SyncEngine {
         onPendingImports: ((Int) -> Void)? = nil
     ) async throws -> Int {
         let docs = try await deps.listTaggedStickies()
-        let toImport: [(id: String, name: String)] = try docs.compactMap { doc in
+        let toImport: [RemoteSticky] = try docs.compactMap { doc in
             try store.fetchByDocId(doc.id) == nil ? doc : nil
         }
         onPendingImports?(toImport.count)
@@ -165,8 +183,11 @@ final class SyncEngine {
                 frameH: Double(frame.size.height),
                 color: "yellow",
                 collapsed: false,
-                createdAt: now,
-                updatedAt: now,
+                createdAt: doc.createdTime ?? now,
+                // Keep Drive's modification time so the All Stickies list,
+                // which sorts by updatedAt, reflects real edit recency rather
+                // than the arbitrary order this import loop happened to run in.
+                updatedAt: doc.modifiedTime ?? now,
                 lastSyncedAt: now,
                 pendingPush: false,
                 deletedLocally: false,

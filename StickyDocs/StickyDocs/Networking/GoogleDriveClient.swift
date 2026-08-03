@@ -7,6 +7,21 @@ struct GoogleDriveClient {
         let id: String
         let name: String
         let mimeType: String
+        // RFC 3339 timestamps, only requested by listTaggedStickies.
+        let modifiedTime: String?
+        let createdTime: String?
+
+        var modifiedDate: Date? { modifiedTime.flatMap(Self.parseRFC3339) }
+        var createdDate: Date? { createdTime.flatMap(Self.parseRFC3339) }
+
+        // Drive emits fractional seconds ("...T08:29:46.800Z"); ISO8601DateFormatter
+        // is all-or-nothing about them, so try both configurations.
+        private static func parseRFC3339(_ string: String) -> Date? {
+            let withFraction = ISO8601DateFormatter()
+            withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = withFraction.date(from: string) { return date }
+            return ISO8601DateFormatter().date(from: string)
+        }
     }
 
     // Cross-machine restore: returns Docs this OAuth client previously created
@@ -22,7 +37,7 @@ struct GoogleDriveClient {
         var comps = URLComponents(string: "https://www.googleapis.com/drive/v3/files")!
         comps.queryItems = [
             .init(name: "q", value: query),
-            .init(name: "fields", value: "files(id,name,mimeType)"),
+            .init(name: "fields", value: "files(id,name,mimeType,modifiedTime,createdTime)"),
             .init(name: "pageSize", value: "100")
         ]
         var req = URLRequest(url: comps.url!)

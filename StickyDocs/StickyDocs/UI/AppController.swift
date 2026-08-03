@@ -54,7 +54,14 @@ final class AppController: ObservableObject {
             listTaggedStickies: {
                 let folderId = try await folderIdCache.id()
                 let files = try await driveClient.listTaggedStickies(inFolder: folderId)
-                return files.map { ($0.id, $0.name) }
+                return files.map {
+                    SyncEngine.RemoteSticky(
+                        id: $0.id,
+                        name: $0.name,
+                        modifiedTime: $0.modifiedDate,
+                        createdTime: $0.createdDate
+                    )
+                }
             }
         )
         self.engine = SyncEngine(store: store, deps: deps)

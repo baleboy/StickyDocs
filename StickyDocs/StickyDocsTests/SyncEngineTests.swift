@@ -186,4 +186,48 @@ struct SyncEngineTests {
         try await engine.deleteSticky(id: sticky.id, alsoDeleteDoc: true)
         #expect(backend.deleted.contains("doc-1"))
     }
+
+    // Imported stickies must keep Drive's modification time, otherwise the
+    // All Stickies list (ordered by updatedAt) shows them in import order.
+    @Test func discoveryPreservesDriveModifiedTime() async throws {
+        let store = try StickyStore.inMemory()
+        let backend = FakeBackend()
+        let older = Date(timeIntervalSince1970: 1_700_000_000)
+        let newer = Date(timeIntervalSince1970: 1_800_000_000)
+        var deps = backend.deps()
+        backend.docs = ["doc-old": "<p>old</p>", "doc-new": "<p>new</p>"]
+        deps.listTaggedStickies = {
+            [
+                // Deliberately listed newest-first so import order differs
+                // from the expected sort order.
+                SyncEngine.RemoteSticky(id: "doc-new", name: "New", modifiedTime: newer, createdTime: older),
+                SyncEngine.RemoteSticky(id: "doc-old", name: "Old", modifiedTime: older, createdTime: older)
+            ]
+        }
+        let engine = SyncEngine(store: store, deps: deps)
+
+        let imported = try await engine.discoverRemoteStickies()
+        #expect(imported == 2)
+
+        let all = try store.allActive()
+        #expect(all.map(\.title) == ["New", "Old"])
+        #expect(all[0].updatedAt == newer)
+        #expect(all[1].updatedAt == older)
+        #expect(all[1].createdAt == older)
+    }
+
+    // Drive can omit timestamps; imports must still land with a usable date.
+    @Test func discoveryFallsBackToNowWhenDriveOmitsTimestamps() async throws {
+        let store = try StickyStore.inMemory()
+        let backend = FakeBackend()
+        var deps = backend.deps()
+        backend.docs = ["doc-x": "<p>x</p>"]
+        deps.listTaggedStickies = { [SyncEngine.RemoteSticky(id: "doc-x", name: "X")] }
+        let engine = SyncEngine(store: store, deps: deps)
+
+        let before = Date()
+        _ = try await engine.discoverRemoteStickies()
+        let loaded = try #require(try store.fetchByDocId("doc-x"))
+        #expect(loaded.updatedAt >= before)
+    }
 }

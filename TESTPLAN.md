@@ -118,6 +118,7 @@ The onboarding gate is `onboarding_complete` in the DB's `app_state` table (`App
 
 - [ ] **Open from menu bar.** Menu bar → Show All Stickies. Panel opens.
 - [ ] **Live update.** Open panel side-by-side with a sticky. Type in the sticky — preview text in panel row updates within ~1 second.
+- [ ] **Most-recently-updated first.** Rows are ordered newest-edit first. With the panel open next to a sticky that is *not* currently at the top, type into that sticky — its row moves to the top of the list within ~1 second.
 - [ ] **Click to focus.** Click a row → that sticky's window comes to the front (or opens if it was closed).
 - [ ] **Color swatch matches.** Each row's swatch matches the sticky's color.
 - [ ] **Sync status dot.** Stickies with pending changes show a small orange dot in the row. Synced stickies show no dot.
@@ -152,7 +153,7 @@ The onboarding gate is `onboarding_complete` in the DB's `app_state` table (`App
 - [ ] **Very long sticky.** Type ~2,000 chars including formatting. Push. Open Doc in browser — content intact. Pull on relaunch — content intact.
 - [ ] **Many stickies.** Create 20 stickies. All restore on relaunch. All Stickies panel renders without lag.
 - [ ] **Doc deleted in Drive UI.** Trash a sticky's Doc in Drive. Trigger a push from app on that sticky. Expected: push detects the 404, status flips to **unlinked** (red dot, tooltip "Doc was deleted in Drive"). Right-click → "Re-create Doc in Drive" provisions a fresh Doc with current content.
-- [ ] **Cross-machine restore.** Install the app on a second Mac, sign in with the same Google account, finish onboarding. After the first `Sync Now` (or the automatic sign-in sync), every sticky from the first Mac appears in the All Stickies panel. Stickies are imported with `isOpen=false` so no floating windows pop up uninvited — click a row to open one. Verify content matches the Doc in Drive. Console log shows `Discovered N sticky/stickies from Drive`.
+- [ ] **Cross-machine restore.** Install the app on a second Mac, sign in with the same Google account, finish onboarding. After the first `Sync Now` (or the automatic sign-in sync), every sticky from the first Mac appears in the All Stickies panel. Stickies are imported with `isOpen=false` so no floating windows pop up uninvited — click a row to open one. Verify content matches the Doc in Drive. Console log shows `Discovered N sticky/stickies from Drive`. Imported stickies keep Drive's last-modified time, so the All Stickies order on the second Mac matches the order on the first (not the arbitrary order they were imported in).
 - [ ] **Idempotent discovery.** Click Sync Now again. No duplicate stickies appear. Console doesn't log a second "Discovered" line (or logs 0).
 
 ## 15. Auth/round-trip harness window (DEBUG builds only)
