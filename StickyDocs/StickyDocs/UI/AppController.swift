@@ -284,14 +284,54 @@ final class AppController: ObservableObject {
     }
 
     func resetAllLocalData() {
-        for controller in windowControllers.values {
+        clearLocalState()
+        try? AuthService.shared.signOut()
+    }
+
+    // MARK: - Sign out
+
+    // Signing out is destructive by design: the local store is a cache of one
+    // Google account's Drive. If it survived a sign-out, the next account would
+    // inherit the previous one's stickies, its stickies_folder_id (invisible to
+    // the new account under drive.file scope, so every push would 404) and its
+    // onboarding_complete flag (so it would never get to pick a folder).
+    func confirmAndSignOut() {
+        let unsynced = (try? store.pendingPushes().count) ?? 0
+        let alert = NSAlert()
+        alert.messageText = "Sign out of Google?"
+        var info = "Your stickies stay in Google Drive, but the local copies are removed and all sticky windows close. Signing back in downloads them again."
+        if unsynced > 0 {
+            let noun = unsynced == 1 ? "sticky has" : "stickies have"
+            info += "\n\n\(unsynced) \(noun) unsynced changes. StickyDocs will try to push them to Drive first — anything that fails to upload is discarded."
+        }
+        alert.informativeText = info
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Sign Out")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        Task { await signOutAndReset() }
+    }
+
+    func signOutAndReset() async {
+        if AuthService.shared.isSignedIn {
+            await syncAllPending()
+        }
+        clearLocalState()
+        try? AuthService.shared.signOut()
+    }
+
+    // Closes every window and drops all local state (stickies + app_state, which
+    // includes the folder id and the onboarding flag). Docs in Drive are left
+    // untouched. Windows are closed first so a window's close-time write can't
+    // resurrect a row after the wipe.
+    private func clearLocalState() {
+        for controller in Array(windowControllers.values) {
             controller.close()
         }
         windowControllers.removeAll()
         allStickiesWindow?.close()
         allStickiesWindow = nil
         try? store.wipeAll()
-        try? AuthService.shared.signOut()
         folderIdCache.invalidate()
         isOnboardingComplete = false
     }

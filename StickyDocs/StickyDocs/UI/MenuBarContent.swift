@@ -34,7 +34,7 @@ struct MenuBarContent: View {
         Divider()
 
         if auth.isSignedIn {
-            Button("Sign Out") { try? auth.signOut() }
+            Button("Sign Out...") { AppController.shared.confirmAndSignOut() }
         } else {
             Button("Sign In with Google...") {
                 Task { _ = try? await auth.signIn() }
@@ -136,7 +136,7 @@ struct StickyDocsCommands: Commands {
             Divider()
 
             if auth.isSignedIn {
-                Button("Sign Out") { try? auth.signOut() }
+                Button("Sign Out...") { AppController.shared.confirmAndSignOut() }
             } else {
                 Button("Sign In with Google...") {
                     Task { _ = try? await auth.signIn() }

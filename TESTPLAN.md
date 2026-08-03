@@ -39,9 +39,12 @@ The onboarding gate is `onboarding_complete` in the DB's `app_state` table (`App
 
 - [ ] **Cold launch, signed out.** Menu bar extra shows **Sign In with Google...**; "Sync Now" / "Open Stickies Folder" disabled. **New Sticky stays enabled** (stickies can be created offline, *once onboarding has been completed or skipped*). Auth/Harness window shows "Not signed in." (grey).
 - [ ] **Sign-in auto-syncs pending edits.** Signed out, create a sticky and type content (or edit an existing one). Sign in. Without clicking Sync Now, the pending sticky pushes automatically — verify the Doc appears (or updates) in Drive within a few seconds.
-- [ ] **Sign in.** Click **Sign In with Google...** from the menu bar. A system sign-in sheet appears in-app (no external browser); consent succeeds; the sheet dismisses itself. Menu flips to **Sign Out**; harness header turns green "Signed in.". Actions enable.
-- [ ] **Sign out.** Click Sign Out. Menu flips back. Header reverts to "Not signed in.".
-- [ ] **Token persistence.** Sign in. Quit (⌘Q from menu bar extra). Relaunch. App is still signed in (no sign-in sheet opens). Menu shows Sign Out.
+- [ ] **Sign in.** Click **Sign In with Google...** from the menu bar. A system sign-in sheet appears in-app (no external browser); consent succeeds; the sheet dismisses itself. Menu flips to **Sign Out...**; harness header turns green "Signed in.". Actions enable.
+- [ ] **Sign out clears local data.** Click **Sign Out...**. A confirmation alert explains the local copies are removed (and, if any sticky has unsynced changes, says how many will be pushed first). Cancel → nothing happens. Confirm → all sticky windows and All Stickies close, the local list is empty, and the menu flips back to "Sign In with Google...". The Docs are still in Drive.
+- [ ] **Sign out pushes unsynced edits first.** Type in a sticky and immediately Sign Out (before the 1.5s debounce fires). Confirm. The edit still lands in the Drive Doc — verify at docs.google.com.
+- [ ] **Sign back in with the same account.** After the sign-out above, sign in again. The folder-choice step appears (onboarding state was cleared); pick the same folder name. All previous stickies are re-discovered from Drive and appear in All Stickies (closed, not auto-spawned as windows).
+- [ ] **Account switch.** Signed in as account A with stickies, Sign Out and confirm, then sign in as account B. B sees **only** B's stickies — none of A's remain in All Stickies, before or after a quit-and-relaunch. Creating a sticky as B pushes successfully (no 404 against A's folder).
+- [ ] **Token persistence.** Sign in. Quit (⌘Q from menu bar extra). Relaunch. App is still signed in (no sign-in sheet opens). Menu shows Sign Out....
 
 ## 2. Sticky creation
 
