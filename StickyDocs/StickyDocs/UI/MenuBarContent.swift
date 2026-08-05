@@ -6,6 +6,7 @@ struct MenuBarContent: View {
     @ObservedObject private var debug = DebugSettings.shared
     @ObservedObject private var app = AppController.shared
     @ObservedObject private var updater = Updater.shared
+    @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
         Button("New Sticky") {
@@ -20,6 +21,11 @@ struct MenuBarContent: View {
         Button("Show All Stickies") {
             AppController.shared.showAllStickiesPanel()
         }
+
+        // Label carries the shortcut instead of .keyboardShortcut: the hot key
+        // is registered globally in AppController, and a SwiftUI shortcut would
+        // fire a second time whenever StickyDocs itself is frontmost.
+        Toggle("Keep Stickies on Top (⌥⌘S)", isOn: $settings.keepOnTop)
 
         Button("Sync Now") {
             Task { await AppController.shared.syncNow() }
@@ -88,6 +94,7 @@ struct StickyDocsCommands: Commands {
     @ObservedObject private var debug = DebugSettings.shared
     @ObservedObject private var app = AppController.shared
     @ObservedObject private var updater = Updater.shared
+    @ObservedObject private var settings = AppSettings.shared
 
     var body: some Commands {
         CommandGroup(replacing: .help) {
@@ -122,6 +129,8 @@ struct StickyDocsCommands: Commands {
             Button("Show All Stickies") {
                 AppController.shared.showAllStickiesPanel()
             }
+
+            Toggle("Keep Stickies on Top (⌥⌘S)", isOn: $settings.keepOnTop)
 
             Button("Sync Now") {
                 Task { await AppController.shared.syncNow() }

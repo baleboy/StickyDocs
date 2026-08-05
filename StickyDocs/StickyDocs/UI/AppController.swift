@@ -3,6 +3,7 @@ import AppKit
 import SwiftUI
 import Combine
 import Network
+import Carbon.HIToolbox
 
 @MainActor
 final class AppController: ObservableObject {
@@ -27,6 +28,7 @@ final class AppController: ObservableObject {
     let onboarding = OnboardingController()
     private let pathMonitor = NWPathMonitor()
     private var lastPathStatus: NWPath.Status?
+    private var keepOnTopHotKey: GlobalHotKey?
 
     private init() {
         do {
@@ -101,6 +103,39 @@ final class AppController: ObservableObject {
             }
 
         startNetworkMonitor()
+        registerKeepOnTopHotKey()
+    }
+
+    // MARK: - Keep on top
+
+    // ⌥⌘S. Registered globally (Carbon) rather than as a SwiftUI
+    // .keyboardShortcut, which would only fire while StickyDocs is frontmost —
+    // exactly the case where the user does NOT need to get stickies out of the
+    // way. Registration can fail if another app owns the combination; the menu
+    // item still works, so it's non-fatal.
+    private func registerKeepOnTopHotKey() {
+        keepOnTopHotKey = GlobalHotKey(
+            keyCode: UInt32(kVK_ANSI_S),
+            modifiers: UInt32(optionKey | cmdKey)
+        ) { [weak self] in
+            self?.toggleKeepOnTop()
+        }
+    }
+
+    func toggleKeepOnTop() {
+        // didSet on the setting calls applyWindowLevel().
+        AppSettings.shared.keepOnTop.toggle()
+    }
+
+    func applyWindowLevel() {
+        let keepOnTop = AppSettings.shared.keepOnTop
+        for controller in windowControllers.values {
+            controller.applyWindowLevel(keepOnTop: keepOnTop)
+            // Turning the setting back on should read as "bring my notes
+            // back", not just change a z-order rule for the next time
+            // something happens to be raised.
+            if keepOnTop { controller.window?.orderFront(nil) }
+        }
     }
 
     // Flush pending pushes when network comes back. The first emission carries

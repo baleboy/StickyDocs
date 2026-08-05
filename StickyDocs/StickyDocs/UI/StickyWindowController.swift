@@ -23,7 +23,7 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
         let frame = NSRect(x: sticky.frameX, y: sticky.frameY, width: sticky.frameW, height: sticky.frameH)
         let style: NSWindow.StyleMask = [.borderless, .resizable]
         let window = StickyKeyableWindow(contentRect: frame, styleMask: style, backing: .buffered, defer: false)
-        window.level = .floating
+        window.level = Self.level(keepOnTop: AppSettings.shared.keepOnTop)
         window.collectionBehavior = [.canJoinAllSpaces, .stationary]
         window.isOpaque = false
         window.backgroundColor = .clear
@@ -47,6 +47,17 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    // .normal keeps the window exactly where it is but lets other apps cover
+    // it. collectionBehavior is intentionally left alone so stickies still
+    // follow the user across Spaces in both modes.
+    private static func level(keepOnTop: Bool) -> NSWindow.Level {
+        keepOnTop ? .floating : .normal
+    }
+
+    func applyWindowLevel(keepOnTop: Bool) {
+        window?.level = Self.level(keepOnTop: keepOnTop)
+    }
 
     func requestHide() {
         guard let window else { return }

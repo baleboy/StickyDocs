@@ -57,8 +57,13 @@ The onboarding gate is `onboarding_complete` in the DB's `app_state` table (`App
 
 ## 3. Window behavior
 
-- [ ] **Always on top.** Open a sticky. Click another app window — sticky stays visible above it.
-- [ ] **Across Spaces.** Switch to a different Space via Mission Control or trackpad. The sticky is still visible in the same screen position.
+- [ ] **Always on top.** With "Keep Stickies on Top" enabled (the default), open a sticky. Click another app window — sticky stays visible above it.
+- [ ] **Keep on Top off.** Menu bar → untick "Keep Stickies on Top (⌥⌘S)". Click a Safari/Finder window — the sticky is now covered by it, but has **not** moved, closed, or changed size.
+- [ ] **Keep on Top back on.** Tick it again. All open stickies come back to the front immediately, in their original positions.
+- [ ] **Global hotkey.** With Safari frontmost (StickyDocs *not* active), press ⌥⌘S. Stickies drop behind Safari. Press ⌥⌘S again — they return to the front. Open the menu bar menu and confirm the checkmark matches the current state.
+- [ ] **New sticky respects the setting.** With the toggle off, create a sticky (⇧⌘N). It appears but does **not** float above other apps.
+- [ ] **Setting persists.** With the toggle off, quit (⌘Q) and relaunch. Restored stickies come back non-floating and the menu item is still unticked.
+- [ ] **Across Spaces.** Switch to a different Space via Mission Control or trackpad. The sticky is still visible in the same screen position. Repeat with "Keep Stickies on Top" off — stickies still follow across Spaces.
 - [ ] **Drag to move.** Drag the sticky from anywhere in the top 16-pixel strip (above the text) or from a non-text area. The sticky moves smoothly. Frame persists across relaunch.
 - [ ] **Resize.** Drag the bottom-right corner. Frame persists across relaunch.
 - [ ] **Close (✕) button = hide.** Hover over the sticky — a small ✕ appears top-left and a small trash icon top-right. Click ✕: window closes silently. Sticky still exists in All Stickies. Doc remains in Drive. Sticky does NOT auto-reopen on next launch (reopen via All Stickies → click row).
