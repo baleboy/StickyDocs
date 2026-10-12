@@ -24,7 +24,7 @@ xcodebuild -project StickyDocs/StickyDocs.xcodeproj -scheme StickyDocs \
 
 `StickyDocsUITests` exists but the substantive coverage is in `StickyDocsTests` (unit + integration with in-memory store and fake Drive/Docs deps).
 
-`PRD.md` is the locked v1 spec. `TESTPLAN.md` is the canonical manual test plan. Dated `testrun-*.md` files are local, untracked execution logs — don't commit them and don't treat them as authoritative.
+Releases: see `RELEASING.md` (tag via `scripts/release.sh`, CI does the rest). `PRD.md` is the locked v1 spec. `TESTPLAN.md` is the canonical manual test plan. Dated `testrun-*.md` files are local, untracked execution logs — don't commit them and don't treat them as authoritative.
 
 **Whenever you change user-visible behavior, review `TESTPLAN.md` and update any steps or expected outcomes that no longer match.** This is easy to forget because nothing enforces it.
 

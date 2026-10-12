@@ -22,6 +22,10 @@ design and `TESTPLAN.md` for the manual test plan.
 
 Open `StickyDocs/StickyDocs.xcodeproj` in Xcode and run the `StickyDocs` scheme.
 
+## Releasing
+
+See [RELEASING.md](RELEASING.md).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
