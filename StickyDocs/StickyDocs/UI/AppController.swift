@@ -49,7 +49,9 @@ final class AppController: ObservableObject {
             },
             exportAsHTML: { try await driveClient.exportAsHTML(docId: $0) },
             fetchRevisionId: { try await docsClient.fetchRevisionId(docId: $0) },
-            pushBody: { docId, content in try await docsClient.replaceDocumentBody(docId: docId, with: content) },
+            pushBody: { docId, content, expectedRevisionId in
+                try await docsClient.replaceDocumentBody(docId: docId, with: content, expectedRevisionId: expectedRevisionId)
+            },
             deleteDoc: { try await driveClient.deleteFile(id: $0) },
             ensureStickiesFolder: { _ = try await folderIdCache.id() },
             isTrashed: { try await driveClient.isTrashed(docId: $0) },

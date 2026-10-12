@@ -102,7 +102,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             try? AppController.shared.restoreOpenStickies()
             try? AppController.shared.createInitialStickyIfNeeded()
             await AppController.shared.pullAllFromDrive()
+            // Edits left pending by the last session (quit mid-debounce,
+            // offline, push failure) — including stickies whose windows are
+            // closed, which no blur will ever flush.
+            if AuthService.shared.isSignedIn {
+                await AppController.shared.syncAllPending()
+            }
         }
+    }
+
+    // Give pending pushes a few seconds to reach Drive before quitting. The
+    // windows' close-time flushes start tasks the process wouldn't otherwise
+    // wait for. Local edits are already in SQLite either way; this only keeps
+    // Drive from lagging (and from conflicting with edits made elsewhere).
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let hasPending = !((try? AppController.shared.store.pendingPushes()) ?? []).isEmpty
+        guard AuthService.shared.isSignedIn, hasPending else { return .terminateNow }
+        Task { @MainActor in
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await AppController.shared.syncAllPending() }
+                group.addTask { try? await Task.sleep(for: .seconds(5)) }
+                await group.next()
+                group.cancelAll()
+            }
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     // Dock-icon fallback: in Release builds we hide the debug Window, so if

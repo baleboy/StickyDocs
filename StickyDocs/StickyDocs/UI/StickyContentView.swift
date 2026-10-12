@@ -58,7 +58,7 @@ struct StickyContentView: View {
                 )
             }
 
-            StickyTextEditor(html: viewModel.sticky.contentHTML) { newAttributed in
+            StickyTextEditor(html: viewModel.sticky.contentHTML, externalContent: viewModel.externalContent) { newAttributed in
                 let html = HTMLNormalizer.html(from: newAttributed)
                 try? viewModel.engine.updateContent(stickyId: viewModel.sticky.id, html: html)
             }

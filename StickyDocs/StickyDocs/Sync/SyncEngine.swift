@@ -12,8 +12,31 @@ import AppKit
 //   - delete: soft-delete locally; optionally also trash the Doc
 //
 // Deferred (v2+): changes.list polling, exponential backoff.
+
+// Thrown by Dependencies.pushBody when the Doc changed in Drive since the
+// revision the engine last synced; the engine diverts to pull.
+struct RemoteRevisionChangedError: Error {}
+
 @MainActor
 final class SyncEngine {
+
+    // Posted synchronously (main actor) whenever the engine replaces a
+    // sticky's contentHTML with text the editor didn't type: a pull that
+    // brought in remote content, or restoring a conflict backup. A focused
+    // editor otherwise ignores store updates, so without this the next
+    // keystroke would write its stale text back over the new content.
+    // userInfo: stickyIdKey, htmlKey.
+    nonisolated static let contentReplacedExternally = Notification.Name("SyncEngine.contentReplacedExternally")
+    nonisolated static let stickyIdKey = "stickyId"
+    nonisolated static let htmlKey = "html"
+
+    private func postContentReplaced(stickyId: String, html: String) {
+        NotificationCenter.default.post(
+            name: Self.contentReplacedExternally,
+            object: self,
+            userInfo: [Self.stickyIdKey: stickyId, Self.htmlKey: html]
+        )
+    }
 
     // A tagged Doc in Drive, as seen by discovery. Timestamps are optional
     // because Drive may omit them and older fakes don't supply them.
@@ -35,7 +58,10 @@ final class SyncEngine {
         var createDoc: (_ title: String) async throws -> String                          // -> docId
         var exportAsHTML: (_ docId: String) async throws -> String
         var fetchRevisionId: (_ docId: String) async throws -> String?
-        var pushBody: (_ docId: String, _ content: NSAttributedString) async throws -> Void
+        // Replaces the Doc body; returns the revisionId of the write. Must
+        // throw RemoteRevisionChangedError, without writing, if the Doc is
+        // no longer at expectedRevisionId (when non-nil).
+        var pushBody: (_ docId: String, _ content: NSAttributedString, _ expectedRevisionId: String?) async throws -> String?
         var deleteDoc: (_ docId: String) async throws -> Void
         var ensureStickiesFolder: () async throws -> Void = {}
         var isTrashed: (_ docId: String) async throws -> Bool = { _ in false }
@@ -56,12 +82,19 @@ final class SyncEngine {
     private var debouncedPushTasks: [String: Task<Void, Never>] = [:]
     static let typingDebounce: Duration = .milliseconds(1500)
 
-    // Per-sticky serialization for push(). Without this, a debounced push that
-    // is already mid-await (e.g. inside createDoc) can race with a blur/close
-    // flush: both read googleDocId == nil and both call createDoc, producing
-    // two Docs in Drive while only one id wins in the store. Chaining each
-    // push through the previous in-flight task forces them to run sequentially.
-    private var pushInFlight: [String: Task<Void, Never>] = [:]
+    // Per-sticky serialization for push() and pull(). Without this, a debounced
+    // push that is already mid-await (e.g. inside createDoc) can race with a
+    // blur/close flush: both read googleDocId == nil and both call createDoc,
+    // producing two Docs in Drive while only one id wins in the store. Chaining
+    // each operation through the previous in-flight task forces them to run
+    // sequentially.
+    //
+    // Serialization does NOT protect against updateContent(), which runs
+    // synchronously on every keystroke while a push/pull is awaiting the
+    // network. Any write after an await must therefore re-fetch the row and
+    // touch only sync bookkeeping, never write back a contentHTML read before
+    // the await — otherwise text typed mid-sync is silently reverted.
+    private var syncInFlight: [String: Task<Void, Never>] = [:]
 
     init(store: StickyStore, deps: Dependencies) {
         self.store = store
@@ -74,6 +107,9 @@ final class SyncEngine {
             try? await Task.sleep(for: Self.typingDebounce)
             guard !Task.isCancelled, let self else { return }
             self.debouncedPushTasks[stickyId] = nil
+            // An earlier push that was in flight when this edit happened may
+            // already have carried it to Drive.
+            guard (try? self.store.fetch(id: stickyId))?.pendingPush == true else { return }
             try? await self.push(stickyId: stickyId)
         }
     }
@@ -109,14 +145,17 @@ final class SyncEngine {
 
     @MainActor
     private func provisionDocIfNeeded(stickyId: String, fallbackTitle: String) async throws {
-        guard var sticky = try store.fetch(id: stickyId), sticky.googleDocId == nil else { return }
+        guard let sticky = try store.fetch(id: stickyId), sticky.googleDocId == nil else { return }
         try await deps.ensureStickiesFolder()
         let title = Self.titleForFirstSync(from: sticky.contentHTML, fallback: fallbackTitle)
         let docId = try await deps.createDoc(title)
-        sticky.googleDocId = docId
-        sticky.title = title
-        sticky.lastRevisionId = try await deps.fetchRevisionId(docId)
-        try store.upsert(sticky)
+        let revisionId = try await deps.fetchRevisionId(docId)
+        // Re-fetch: the user may have kept typing while the Doc was created.
+        guard var current = try store.fetch(id: stickyId) else { return }
+        current.googleDocId = docId
+        current.title = title
+        current.lastRevisionId = revisionId
+        try store.upsert(current)
     }
 
     @MainActor
@@ -211,21 +250,23 @@ final class SyncEngine {
     }
 
     func push(stickyId: String) async throws {
-        let previous = pushInFlight[stickyId]
-        final class ErrorBox { var error: Error? }
-        let box = ErrorBox()
-        let task = Task { @MainActor [weak self] in
-            _ = await previous?.value
-            guard let self else { return }
-            do {
-                try await self.pushSerialized(stickyId: stickyId)
-            } catch {
-                box.error = error
-            }
+        try await serialized(stickyId: stickyId) {
+            try await self.pushSerialized(stickyId: stickyId)
         }
-        pushInFlight[stickyId] = task
-        await task.value
-        if let error = box.error { throw error }
+    }
+
+    // Runs `operation` after any push/pull already in flight for this sticky.
+    private func serialized<T: Sendable>(
+        stickyId: String,
+        _ operation: @escaping @MainActor () async throws -> T
+    ) async throws -> T {
+        let previous = syncInFlight[stickyId]
+        let task = Task { @MainActor () -> Result<T, Error> in
+            _ = await previous?.value
+            do { return .success(try await operation()) } catch { return .failure(error) }
+        }
+        syncInFlight[stickyId] = Task { _ = await task.value }
+        return try await task.value.get()
     }
 
     private func pushSerialized(stickyId: String) async throws {
@@ -270,18 +311,19 @@ final class SyncEngine {
     )
 
     private func pushInner(stickyId: String) async throws {
-        guard var sticky = try store.fetch(id: stickyId) else { return }
-        // Skip stickies that have no real content yet - don't create a Doc
-        // just for an empty note the user might still discard.
-        let plain = HTMLNormalizer.attributedString(from: sticky.contentHTML).string
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !plain.isEmpty else { return }
+        guard var sticky = try store.fetch(id: stickyId), !sticky.deletedLocally else { return }
 
         // If the sticky has never been synced and has no doc, provision one.
         // But if it was previously synced and is now unlinked (Doc deleted in
         // Drive), don't auto-recreate - wait for an explicit user action.
         if sticky.googleDocId == nil {
             if sticky.lastSyncedAt != nil { return }   // unlinked, hold
+            // Don't create a Doc just for an empty note the user might still
+            // discard. (Only applies before provisioning: clearing a sticky
+            // that already has a Doc must still push the empty body.)
+            let plain = HTMLNormalizer.attributedString(from: sticky.contentHTML).string
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !plain.isEmpty else { return }
             try await provisionDocIfNeeded(stickyId: stickyId, fallbackTitle: "")
             guard let refreshed = try store.fetch(id: stickyId) else { return }
             sticky = refreshed
@@ -292,49 +334,49 @@ final class SyncEngine {
         // user in Drive. Detect this before pushing so we don't pollute trash
         // with new edits the user can't see.
         if (try? await deps.isTrashed(docId)) == true {
-            try markUnlinked(&sticky)
+            try markUnlinked(stickyId: stickyId)
             return
         }
 
-        // Guard against silently overwriting remote edits: if the Doc's
-        // revisionId advanced since our last sync, divert to pull() so the
-        // conflict path runs (stash local into conflict_backup_html, accept
-        // remote). After pull(), pendingPush is cleared so we don't continue.
-        if sticky.lastRevisionId != nil {
-            let remoteRevisionId: String?
+        // pushBody refuses to write if the Doc has moved past lastRevisionId,
+        // so remote edits are never silently overwritten. On refusal, divert
+        // to pull: a real remote change (or conflict) takes over local state
+        // and clears pendingPush; a content-neutral revision bump refreshes
+        // lastRevisionId and we retry once.
+        for _ in 0..<2 {
+            let pushedHTML = sticky.contentHTML
+            let attributed = HTMLNormalizer.attributedString(from: pushedHTML)
+            let newRevisionId: String?
             do {
-                remoteRevisionId = try await deps.fetchRevisionId(docId)
+                newRevisionId = try await deps.pushBody(docId, attributed, sticky.lastRevisionId)
+            } catch is RemoteRevisionChangedError {
+                // pullInner, not pull: we're already inside the serialized
+                // chain, and pull() would wait on ourselves.
+                let outcome = try await pullInner(stickyId: stickyId)
+                guard outcome == .unchanged,
+                      let refreshed = try store.fetch(id: stickyId),
+                      refreshed.pendingPush,
+                      refreshed.googleDocId == docId else { return }
+                sticky = refreshed
+                continue
             } catch let error as NSError where Self.isMissingDocError(error) {
-                try markUnlinked(&sticky)
+                try markUnlinked(stickyId: stickyId)
                 return
             }
-            if let remote = remoteRevisionId, remote != sticky.lastRevisionId {
-                let outcome = try await pull(stickyId: stickyId)
-                // If pull found a real remote change (or conflict), it has
-                // taken over local state and cleared pendingPush; stop here.
-                // Otherwise the revision bump was content-neutral and we
-                // continue with our push using the refreshed lastRevisionId.
-                guard outcome == .unchanged,
-                      let refreshed = try store.fetch(id: stickyId) else { return }
-                sticky = refreshed
-                guard sticky.pendingPush else { return }
-            }
-        }
-
-        let attributed = HTMLNormalizer.attributedString(from: sticky.contentHTML)
-        do {
-            try await deps.pushBody(docId, attributed)
-            sticky.lastRevisionId = try await deps.fetchRevisionId(docId)
-        } catch let error as NSError where Self.isMissingDocError(error) {
-            try markUnlinked(&sticky)
+            // Re-fetch: edits made while the push was in flight must survive,
+            // and stay pending so the debounce they scheduled pushes them next.
+            guard var current = try store.fetch(id: stickyId) else { return }
+            current.lastRevisionId = newRevisionId
+            current.lastSyncedHTML = pushedHTML
+            current.lastSyncedAt = Date()
+            current.pendingPush = current.contentHTML != pushedHTML
+            current.lastPushErrorMessage = nil
+            current.lastPushErrorAt = nil
+            try store.upsert(current)
             return
         }
-        sticky.lastSyncedHTML = sticky.contentHTML
-        sticky.lastSyncedAt = Date()
-        sticky.pendingPush = false
-        sticky.lastPushErrorMessage = nil
-        sticky.lastPushErrorAt = nil
-        try store.upsert(sticky)
+        // Still racing remote edits after a retry; pendingPush stays true and
+        // the next blur, debounce or Sync Now tries again.
     }
 
     private func recordPushError(stickyId: String, error: Error) throws {
@@ -370,7 +412,8 @@ final class SyncEngine {
         error.code == 404 || error.code == 410
     }
 
-    private func markUnlinked(_ sticky: inout Sticky) throws {
+    private func markUnlinked(stickyId: String) throws {
+        guard var sticky = try store.fetch(id: stickyId) else { return }
         sticky.googleDocId = nil
         sticky.lastRevisionId = nil
         sticky.pendingPush = false
@@ -396,23 +439,33 @@ final class SyncEngine {
     }
 
     func pull(stickyId: String) async throws -> PullOutcome {
-        guard var sticky = try store.fetch(id: stickyId),
-              let docId = sticky.googleDocId else { return .unchanged }
+        try await serialized(stickyId: stickyId) {
+            try await self.pullInner(stickyId: stickyId)
+        }
+    }
+
+    private func pullInner(stickyId: String) async throws -> PullOutcome {
+        guard let snapshot = try store.fetch(id: stickyId),
+              let docId = snapshot.googleDocId else { return .unchanged }
 
         let remoteRevisionId: String?
         do {
             remoteRevisionId = try await deps.fetchRevisionId(docId)
         } catch let error as NSError where Self.isMissingDocError(error) {
-            try markUnlinked(&sticky)
+            try markUnlinked(stickyId: stickyId)
             return .unchanged
         }
-        if let remote = remoteRevisionId, remote == sticky.lastRevisionId {
+        if let remote = remoteRevisionId, remote == snapshot.lastRevisionId {
             return .unchanged
         }
 
         let pulledHTML = try await deps.exportAsHTML(docId)
         let pulledAttr = HTMLNormalizer.attributedString(from: pulledHTML)
         let canonicalRemote = HTMLNormalizer.html(from: pulledAttr)
+
+        // Re-fetch so the dirty check and conflict backup see edits typed
+        // while the export was in flight.
+        guard var sticky = try store.fetch(id: stickyId) else { return .unchanged }
 
         // Google Docs advances revisionId on events that don't change content
         // (e.g. opening the Doc in a browser creates a viewing revision). If
@@ -440,6 +493,7 @@ final class SyncEngine {
         sticky.pendingPush = false
         sticky.updatedAt = Date()
         try store.upsert(sticky)
+        postContentReplaced(stickyId: stickyId, html: canonicalRemote)
         return outcome
     }
 
@@ -451,6 +505,7 @@ final class SyncEngine {
         sticky.pendingPush = true
         sticky.updatedAt = Date()
         try store.upsert(sticky)
+        postContentReplaced(stickyId: stickyId, html: backup)
     }
 
     func discardBackup(stickyId: String) throws {
@@ -462,10 +517,20 @@ final class SyncEngine {
     }
 
     func deleteSticky(id: String, alsoDeleteDoc: Bool) async throws {
-        guard var sticky = try store.fetch(id: id) else { return }
-        if alsoDeleteDoc, let docId = sticky.googleDocId {
+        // Drop the pending debounce and wait for any in-flight push, so a
+        // push can't provision (or write to) a Doc after the delete.
+        cancelDebouncedPush(stickyId: id)
+        try await serialized(stickyId: id) {
+            try await self.deleteStickyInner(id: id, alsoDeleteDoc: alsoDeleteDoc)
+        }
+    }
+
+    private func deleteStickyInner(id: String, alsoDeleteDoc: Bool) async throws {
+        guard let snapshot = try store.fetch(id: id) else { return }
+        if alsoDeleteDoc, let docId = snapshot.googleDocId {
             try await deps.deleteDoc(docId)
         }
+        guard var sticky = try store.fetch(id: id) else { return }
         sticky.deletedLocally = true
         sticky.updatedAt = Date()
         try store.upsert(sticky)

@@ -109,7 +109,9 @@ final class StickyStore {
 
     func pendingPushes() throws -> [Sticky] {
         try dbQueue.read { db in
-            try Sticky.filter(Sticky.CodingKeys.pendingPush == true).fetchAll(db)
+            try Sticky
+                .filter(Sticky.CodingKeys.pendingPush == true && Sticky.CodingKeys.deletedLocally == false)
+                .fetchAll(db)
         }
     }
 

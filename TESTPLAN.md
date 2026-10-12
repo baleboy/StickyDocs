@@ -85,6 +85,9 @@ The onboarding gate is `onboarding_complete` in the DB's `app_state` table (`App
 ## 5. Sync — push
 
 - [ ] **Push on blur.** Type in sticky, click another app, refresh Drive. Doc body matches sticky.
+- [ ] **Typing during an in-flight push isn't lost.** In a synced sticky, type a sentence, pause ~2s (debounce push starts), type a few more words, and within a second click another app. The sticky still shows every word after blur, and after a moment the Doc in Drive does too. Repeat on a brand-new sticky (first push creates the Doc, which is the slowest window).
+- [ ] **Clearing a synced sticky syncs.** In a synced sticky, select all and delete. Blur. The Doc in Drive becomes empty and the status dot doesn't stay orange.
+- [ ] **Typed-then-trashed sticky leaves no Doc.** Create a new sticky, type a word, and within a second click the trash icon and confirm. Wait a few seconds: no new Doc appears in the Stickies folder.
 - [ ] **Push on close.** Type in sticky, click ✕. Doc body updates in Drive (refresh to verify).
 - [ ] **Empty stickies don't sync.** Create new sticky, don't type, blur. No Doc appears in Drive.
 - [ ] **Whitespace-only doesn't sync.** Type just spaces/newlines, blur. No Doc.
@@ -93,6 +96,7 @@ The onboarding gate is `onboarding_complete` in the DB's `app_state` table (`App
 ## 6. Sync — pull
 
 - [ ] **Pull after remote edit.** Open the Doc in browser. Edit content (add a paragraph). Save. Back in app, trigger pull either by relaunching the app or by clicking Sync Now in the menu bar. Sticky updates to show the remote content. *Pull-on-focus per-sticky is deferred to v2.*
+- [ ] **Remote edit while typing applies immediately.** With a synced sticky focused and its Doc open in a browser, add a word in the browser. Back in the sticky, click into the text and turn wifi off and on (reconnect triggers Sync Now) without clicking away. The sticky's text updates in place to include the remote word. Typing afterwards keeps it; it isn't reverted to the pre-pull text.
 - [ ] **Round-trip fidelity.** Type in sticky: bold, italic, underline, bulleted list, numbered list. Blur. Open the Doc in browser — formatting renders correctly. Quit and relaunch the app — sticky reappears with formatting intact locally.
 
 ## 7. Conflict (manual provocation)
@@ -152,6 +156,8 @@ The onboarding gate is `onboarding_complete` in the DB's `app_state` table (`App
 - [ ] **Offline at push time.** Disconnect wifi. Type in a sticky, blur. Expected: push fails — a **red banner** appears between the title bar and the editor reading "Sync failed: The Internet connection appears to be offline." with a **Retry** button and an **×** dismiss. The status dot in the corner is also red. Sticky stays `pending_push=true`. Reconnect and click Retry (or just type to fire a debounced push) — banner disappears, dot clears.
 - [ ] **Dismiss error.** While the red banner is showing, click the **×**. Banner disappears, dot turns orange (pending). On the next failed push the banner reappears with the latest error.
 - [ ] **Push error survives relaunch.** Provoke a push error (disconnect wifi, edit, wait). Quit while offline. Relaunch (still offline). The sticky's banner is still there with the same text — the error is persisted. Reconnect and click Retry — banner clears.
+- [ ] **Quit flushes pending edits.** Type in a sticky and press ⌘Q within a second (before the 1.5s debounce). The app quits within a few seconds; the Doc in Drive has the typed text.
+- [ ] **Launch pushes edits left pending.** Disconnect wifi, type in a sticky, close its window (✕), quit. Reconnect, relaunch. Without opening the sticky or clicking Sync Now, the Doc in Drive updates within a few seconds.
 - [ ] **Auto-sync on reconnect.** Disconnect wifi. Type in a sticky and wait for the red banner. Reconnect wifi but do NOT touch the app. Within a few seconds the banner should clear on its own — the network-path monitor fires `syncNow` on the offline→online transition. Verify the Doc in Drive is updated.
 - [ ] **Token revocation → re-auth banner.** Sign in normally, then revoke the app's access at https://myaccount.google.com/permissions (or sign out of Google in a way that invalidates the refresh token). Type in a sticky to trigger a push. Expected: a **blue "Sign in to Google to keep syncing." banner** with a `Sign In` button. Menu bar flips to "Sign In with Google..." (because `accessToken()` cleared the dead token). Click the banner's `Sign In`, complete OAuth. Banner clears, sticky syncs, every other sticky's banner clears too.
 - [ ] **Re-auth banner outranks generic error.** If both an auth failure and a generic network error apply to a sticky, the blue Sign-In banner wins until OAuth completes.

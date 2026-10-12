@@ -67,6 +67,14 @@ struct RoundTripHarness {
         ("multi-paragraph", "<p>first</p><p>second</p>"),
         ("bullets", "<ul><li>one</li><li>two</li><li>three</li></ul>"),
         ("numbered", "<ol><li>first</li><li>second</li></ol>"),
-        ("mixed", "<p>intro</p><ul><li>a</li><li>b</li></ul><p>end</p>")
+        ("mixed", "<p>intro</p><ul><li>a</li><li>b</li></ul><p>end</p>"),
+        // Whitespace and escaping: any of these failing to round-trip makes a
+        // content-neutral revision bump look like a remote edit (false conflict).
+        ("empty-line", "<p>first</p><p></p><p>second</p>"),
+        ("double-space", "<p>two  spaces</p>"),
+        ("trailing-space", "<p>trailing </p>"),
+        ("tab", "<p>a\tb</p>"),
+        ("escaped", "<p>a &amp; b &lt;c&gt;</p>"),
+        ("emoji", "<p>hi 👋 there</p>")
     ]
 }

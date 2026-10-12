@@ -12,21 +12,36 @@ struct SyncEngineTests {
         var revisions: [String: String] = [:]
         var deleted: Set<String> = []
         var pushCount = 0
+        // Run mid-request to simulate the user typing while a network call
+        // is in flight.
+        var duringCreateDoc: (() throws -> Void)?
+        var duringPushBody: (() throws -> Void)?
+        var duringExport: (() throws -> Void)?
 
         func deps() -> SyncEngine.Dependencies {
             SyncEngine.Dependencies(
                 createDoc: { _ in
+                    try self.duringCreateDoc?()
                     let id = self.nextDocId
                     self.docs[id] = ""
                     self.revisions[id] = "rev-0"
                     return id
                 },
-                exportAsHTML: { docId in self.docs[docId] ?? "" },
+                exportAsHTML: { docId in
+                    try self.duringExport?()
+                    return self.docs[docId] ?? ""
+                },
                 fetchRevisionId: { docId in self.revisions[docId] },
-                pushBody: { docId, attributed in
+                pushBody: { docId, attributed, expectedRevisionId in
+                    if let expectedRevisionId, expectedRevisionId != self.revisions[docId] {
+                        throw RemoteRevisionChangedError()
+                    }
                     self.pushCount += 1
                     self.docs[docId] = HTMLNormalizer.html(from: attributed)
                     self.bumpRevision(docId)
+                    let writtenRevision = self.revisions[docId]
+                    try self.duringPushBody?()
+                    return writtenRevision
                 },
                 deleteDoc: { docId in self.deleted.insert(docId) }
             )
@@ -37,7 +52,7 @@ struct SyncEngineTests {
             bumpRevision(docId)
         }
 
-        private func bumpRevision(_ docId: String) {
+        func bumpRevision(_ docId: String) {
             let n = (revisions[docId]?.split(separator: "-").last.flatMap { Int($0) } ?? 0) + 1
             revisions[docId] = "rev-\(n)"
         }
@@ -229,5 +244,151 @@ struct SyncEngineTests {
         _ = try await engine.discoverRemoteStickies()
         let loaded = try #require(try store.fetchByDocId("doc-x"))
         #expect(loaded.updatedAt >= before)
+    }
+
+    // MARK: - Edits made while a sync is in flight
+
+    @Test func editDuringPushIsNotLost() async throws {
+        let (store, backend, engine) = try makeFixture()
+        let sticky = try await engine.createSticky()
+        try engine.updateContent(stickyId: sticky.id, html: "<p>hello</p>")
+        backend.duringPushBody = {
+            backend.duringPushBody = nil
+            try engine.updateContent(stickyId: sticky.id, html: "<p>hello world</p>")
+        }
+
+        try await engine.push(stickyId: sticky.id)
+
+        let loaded = try #require(try store.fetch(id: sticky.id))
+        #expect(loaded.contentHTML == "<p>hello world</p>")
+        #expect(loaded.lastSyncedHTML == "<p>hello</p>")
+        #expect(loaded.pendingPush == true)
+
+        try await engine.push(stickyId: sticky.id)
+        #expect(backend.docs["doc-1"] == "<p>hello world</p>")
+        #expect(try store.fetch(id: sticky.id)?.pendingPush == false)
+    }
+
+    @Test func editDuringDocProvisioningIsNotLost() async throws {
+        let (store, backend, engine) = try makeFixture()
+        let sticky = try engine.createLocalSticky()
+        try engine.updateContent(stickyId: sticky.id, html: "<p>hello</p>")
+        backend.duringCreateDoc = {
+            backend.duringCreateDoc = nil
+            try engine.updateContent(stickyId: sticky.id, html: "<p>hello world</p>")
+        }
+
+        try await engine.push(stickyId: sticky.id)
+
+        let loaded = try #require(try store.fetch(id: sticky.id))
+        #expect(loaded.googleDocId == "doc-1")
+        #expect(loaded.contentHTML == "<p>hello world</p>")
+        #expect(loaded.pendingPush == false)
+        #expect(backend.docs["doc-1"] == "<p>hello world</p>")
+    }
+
+    @Test func editDuringPullIsStashedAsConflict() async throws {
+        let (store, backend, engine) = try makeFixture()
+        let sticky = try await engine.createSticky()
+        backend.remoteEdit(docId: "doc-1", html: "<p>their edit</p>")
+        backend.duringExport = {
+            backend.duringExport = nil
+            try engine.updateContent(stickyId: sticky.id, html: "<p>my edit</p>")
+        }
+
+        let outcome = try await engine.pull(stickyId: sticky.id)
+
+        #expect(outcome == .conflict)
+        let loaded = try #require(try store.fetch(id: sticky.id))
+        #expect(loaded.contentHTML == "<p>their edit</p>")
+        #expect(loaded.conflictBackupHTML == "<p>my edit</p>")
+    }
+
+    // MARK: - Push/pull edge cases
+
+    @Test func clearingSyncedStickyPushesEmptyBody() async throws {
+        let (store, backend, engine) = try makeFixture()
+        let sticky = try await engine.createSticky()
+        try engine.updateContent(stickyId: sticky.id, html: "<p>hello</p>")
+        try await engine.push(stickyId: sticky.id)
+
+        try engine.updateContent(stickyId: sticky.id, html: "")
+        try await engine.push(stickyId: sticky.id)
+
+        #expect(backend.docs["doc-1"] == "")
+        #expect(try store.fetch(id: sticky.id)?.pendingPush == false)
+    }
+
+    @Test func emptyUnprovisionedStickyStillCreatesNoDoc() async throws {
+        let (store, backend, engine) = try makeFixture()
+        let sticky = try engine.createLocalSticky()
+        try engine.updateContent(stickyId: sticky.id, html: "<p>   </p>")
+        try await engine.push(stickyId: sticky.id)
+        #expect(backend.docs.isEmpty)
+        #expect(try store.fetch(id: sticky.id)?.googleDocId == nil)
+    }
+
+    @Test func contentNeutralRevisionBumpStillPushes() async throws {
+        let (store, backend, engine) = try makeFixture()
+        let sticky = try await engine.createSticky()
+        try engine.updateContent(stickyId: sticky.id, html: "<p>v1</p>")
+        try await engine.push(stickyId: sticky.id)
+
+        backend.bumpRevision("doc-1")   // e.g. Doc opened in a browser
+        try engine.updateContent(stickyId: sticky.id, html: "<p>v2</p>")
+        try await engine.push(stickyId: sticky.id)
+
+        #expect(backend.docs["doc-1"] == "<p>v2</p>")
+        let loaded = try #require(try store.fetch(id: sticky.id))
+        #expect(loaded.pendingPush == false)
+        #expect(loaded.conflictBackupHTML == nil)
+    }
+
+    @Test func remoteEditRightAfterOurWriteIsStillPulled() async throws {
+        let (store, backend, engine) = try makeFixture()
+        let sticky = try await engine.createSticky()
+        try engine.updateContent(stickyId: sticky.id, html: "<p>mine</p>")
+        backend.duringPushBody = {
+            backend.duringPushBody = nil
+            backend.remoteEdit(docId: "doc-1", html: "<p>theirs</p>")
+        }
+        try await engine.push(stickyId: sticky.id)
+
+        // We must have recorded the revision of OUR write, not theirs.
+        let outcome = try await engine.pull(stickyId: sticky.id)
+        #expect(outcome == .updated)
+        #expect(try store.fetch(id: sticky.id)?.contentHTML == "<p>theirs</p>")
+    }
+
+    @Test func deletedStickyIsNeverPushed() async throws {
+        let (store, backend, engine) = try makeFixture()
+        let sticky = try engine.createLocalSticky()
+        try engine.updateContent(stickyId: sticky.id, html: "<p>typed then trashed</p>")
+        try await engine.deleteSticky(id: sticky.id, alsoDeleteDoc: false)
+
+        #expect(try store.pendingPushes().isEmpty)
+        try await engine.push(stickyId: sticky.id)
+        #expect(backend.docs.isEmpty)
+        #expect(backend.pushCount == 0)
+    }
+
+    @Test func pullPostsExternalContentReplacement() async throws {
+        let (_, backend, engine) = try makeFixture()
+        let sticky = try await engine.createSticky()
+        backend.remoteEdit(docId: "doc-1", html: "<p>from web</p>")
+
+        var received: [String] = []
+        let token = NotificationCenter.default.addObserver(
+            forName: SyncEngine.contentReplacedExternally, object: engine, queue: nil
+        ) { note in
+            if note.userInfo?[SyncEngine.stickyIdKey] as? String == sticky.id,
+               let html = note.userInfo?[SyncEngine.htmlKey] as? String {
+                received.append(html)
+            }
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        _ = try await engine.pull(stickyId: sticky.id)
+        #expect(received == ["<p>from web</p>"])
     }
 }

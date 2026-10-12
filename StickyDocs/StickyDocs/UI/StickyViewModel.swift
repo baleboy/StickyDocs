@@ -12,7 +12,11 @@ final class StickyViewModel: ObservableObject {
     var onRequestHide: (() -> Void)?
     var onRequestDelete: (() -> Void)?
 
+    // Bridges SyncEngine.contentReplacedExternally into the live text view.
+    let externalContent = EditorContentSink()
+
     private var cancellable: AnyDatabaseCancellable?
+    private var contentReplacedObserver: NSObjectProtocol?
 
     init(sticky: Sticky, engine: SyncEngine) {
         self.sticky = sticky
@@ -31,9 +35,29 @@ final class StickyViewModel: ObservableObject {
                 }
             }
         )
+
+        // Delivered synchronously from the engine (queue: nil) so the editor
+        // swaps in the new text before another keystroke can be processed.
+        contentReplacedObserver = NotificationCenter.default.addObserver(
+            forName: SyncEngine.contentReplacedExternally,
+            object: engine,
+            queue: nil
+        ) { [weak self] note in
+            guard let changedId = note.userInfo?[SyncEngine.stickyIdKey] as? String,
+                  changedId == id,
+                  let html = note.userInfo?[SyncEngine.htmlKey] as? String else { return }
+            MainActor.assumeIsolated {
+                self?.externalContent.apply?(html)
+            }
+        }
     }
 
-    deinit { cancellable?.cancel() }
+    deinit {
+        cancellable?.cancel()
+        if let contentReplacedObserver {
+            NotificationCenter.default.removeObserver(contentReplacedObserver)
+        }
+    }
 
     func reload() {
         if let updated = try? engine.store.fetch(id: sticky.id) {
@@ -42,7 +66,9 @@ final class StickyViewModel: ObservableObject {
     }
 
     func setColor(_ color: String) {
-        var s = sticky
+        // Fetch from the store, not self.sticky: the observed copy lags the DB
+        // and writing it back could revert just-typed content.
+        guard var s = try? engine.store.fetch(id: sticky.id) else { return }
         s.color = color
         s.updatedAt = Date()
         try? engine.store.upsert(s)

@@ -64,11 +64,22 @@ final class StickyNSTextView: NSTextView {
     }
 }
 
+// Lets the owner push content into the live NSTextView immediately,
+// bypassing updateNSView's skip-while-focused rule. Used for content the
+// engine replaced (pull, restore backup) — as opposed to store updates that
+// merely echo the user's own typing back, which must not clobber the editor.
+@MainActor
+final class EditorContentSink {
+    var apply: ((String) -> Void)?
+}
+
 struct StickyTextEditor: NSViewRepresentable {
     // Bound to the sticky's current HTML. Re-applied by updateNSView when the
-    // store changes underneath us (e.g. a pull pulled in a remote edit) so
-    // long as the user isn't actively typing in this text view.
+    // store changes underneath us, so long as the user isn't actively typing
+    // in this text view. Engine-originated replacements arrive through
+    // `externalContent` instead and apply even while typing.
     let html: String
+    let externalContent: EditorContentSink
     let onChange: (NSAttributedString) -> Void
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -109,6 +120,9 @@ struct StickyTextEditor: NSViewRepresentable {
         textView.textStorage?.setAttributedString(initialAttr)
         textView.delegate = context.coordinator
         context.coordinator.textView = textView
+        externalContent.apply = { [weak coordinator = context.coordinator] html in
+            coordinator?.applyExternal(html)
+        }
         return scrollView
     }
 
@@ -138,6 +152,16 @@ struct StickyTextEditor: NSViewRepresentable {
 
         init(onChange: @escaping (NSAttributedString) -> Void) {
             self.onChange = onChange
+        }
+
+        func applyExternal(_ html: String) {
+            guard let textView, let storage = textView.textStorage else { return }
+            if HTMLNormalizer.html(from: NSAttributedString(attributedString: storage)) == html { return }
+            let selection = textView.selectedRange()
+            storage.setAttributedString(HTMLNormalizer.attributedString(from: html))
+            let length = storage.length
+            let location = min(selection.location, length)
+            textView.setSelectedRange(NSRange(location: location, length: min(selection.length, length - location)))
         }
 
         func textDidChange(_ notification: Notification) {

@@ -18,19 +18,42 @@ struct GoogleDocsClient {
         return try JSONDecoder().decode(Resp.self, from: data).revisionId
     }
 
-    func replaceDocumentBody(docId: String, with attributed: NSAttributedString) async throws {
-        let endIndex = try await fetchBodyEndIndex(docId: docId)
-        let encoded = await DocsBatchEncoder.encode(attributed, currentBodyEndIndex: endIndex)
-        guard !encoded.requests.isEmpty else { return }
-        try await batchUpdate(docId: docId, requests: encoded.requests)
+    // Replaces the whole body and returns the Doc's revisionId after the write.
+    //
+    // If `expectedRevisionId` is given and the Doc has moved past it, throws
+    // RemoteRevisionChangedError without writing. The batchUpdate is also
+    // pinned (writeControl.requiredRevisionId) to the revision the delete
+    // range was computed from, so a remote edit landing between our GET and
+    // the write is rejected instead of silently erased. The returned id comes
+    // from the batchUpdate response, so it is exactly the revision we wrote —
+    // never a later remote edit we'd then mistake for our own.
+    @discardableResult
+    func replaceDocumentBody(
+        docId: String,
+        with attributed: NSAttributedString,
+        expectedRevisionId: String? = nil
+    ) async throws -> String {
+        let snapshot = try await fetchBodySnapshot(docId: docId)
+        if let expectedRevisionId, snapshot.revisionId != expectedRevisionId {
+            throw RemoteRevisionChangedError()
+        }
+        let encoded = await DocsBatchEncoder.encode(attributed, currentBodyEndIndex: snapshot.endIndex)
+        guard !encoded.requests.isEmpty else { return snapshot.revisionId }
+        let newRevisionId = try await batchUpdate(
+            docId: docId,
+            requests: encoded.requests,
+            requiredRevisionId: snapshot.revisionId
+        )
+        if let newRevisionId { return newRevisionId }
+        return try await fetchRevisionId(docId: docId)
     }
 
     // MARK: - HTTP
 
-    private func fetchBodyEndIndex(docId: String) async throws -> Int {
+    private func fetchBodySnapshot(docId: String) async throws -> (revisionId: String, endIndex: Int) {
         let token = try await accessToken()
         var comps = URLComponents(string: "https://docs.googleapis.com/v1/documents/\(docId)")!
-        comps.queryItems = [.init(name: "fields", value: "body(content(endIndex))")]
+        comps.queryItems = [.init(name: "fields", value: "revisionId,body(content(endIndex))")]
         var req = URLRequest(url: comps.url!)
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
@@ -41,28 +64,43 @@ struct GoogleDocsClient {
                 struct Element: Decodable { let endIndex: Int? }
                 let content: [Element]
             }
+            let revisionId: String
             let body: Body
         }
         let doc = try JSONDecoder().decode(DocShape.self, from: data)
-        return doc.body.content.compactMap { $0.endIndex }.max() ?? 1
+        return (doc.revisionId, doc.body.content.compactMap { $0.endIndex }.max() ?? 1)
     }
 
-    private func batchUpdate(docId: String, requests: [DocsRequest]) async throws {
+    // Returns the post-write revisionId from the response's writeControl.
+    private func batchUpdate(docId: String, requests: [DocsRequest], requiredRevisionId: String) async throws -> String? {
         let token = try await accessToken()
         var req = URLRequest(url: URL(string: "https://docs.googleapis.com/v1/documents/\(docId):batchUpdate")!)
         req.httpMethod = "POST"
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body = try JSONEncoder().encode(BatchUpdateBody(requests: requests))
+        let body = try JSONEncoder().encode(BatchUpdateBody(
+            requests: requests,
+            writeControl: .init(requiredRevisionId: requiredRevisionId)
+        ))
         req.httpBody = body
 
         let (data, response) = try await URLSession.shared.data(for: req)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             let reqStr = String(data: body, encoding: .utf8) ?? ""
             let respStr = String(data: data, encoding: .utf8) ?? ""
+            // A stale requiredRevisionId is reported as a 400 whose message
+            // names the revision; other 400s (bad ranges etc.) don't.
+            if http.statusCode == 400, respStr.range(of: "revision", options: .caseInsensitive) != nil {
+                throw RemoteRevisionChangedError()
+            }
             throw NSError(domain: "GoogleDocs", code: http.statusCode,
                           userInfo: [NSLocalizedDescriptionKey: "\(respStr)\nREQUEST: \(reqStr)"])
         }
+        struct Resp: Decodable {
+            struct WriteControl: Decodable { let requiredRevisionId: String? }
+            let writeControl: WriteControl?
+        }
+        return (try? JSONDecoder().decode(Resp.self, from: data))?.writeControl?.requiredRevisionId
     }
 
     private static func assertOK(response: URLResponse, data: Data) throws {
@@ -78,7 +116,9 @@ struct GoogleDocsClient {
 // MARK: - Request types (Docs API JSON shapes)
 
 private struct BatchUpdateBody: Encodable {
+    struct WriteControl: Encodable { let requiredRevisionId: String }
     let requests: [DocsRequest]
+    let writeControl: WriteControl
 }
 
 enum DocsRequest: Encodable {
