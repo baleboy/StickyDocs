@@ -391,4 +391,43 @@ struct SyncEngineTests {
         _ = try await engine.pull(stickyId: sticky.id)
         #expect(received == ["<p>from web</p>"])
     }
+
+    // MARK: - Overlapping discovery and auth-error classification
+
+    @Test func discoverySkipsDocImportedByOverlappingRun() async throws {
+        let store = try StickyStore.inMemory()
+        let backend = FakeBackend()
+        backend.docs = ["doc-x": "<p>x</p>"]
+        var deps = backend.deps()
+        deps.listTaggedStickies = { [SyncEngine.RemoteSticky(id: "doc-x", name: "X")] }
+        let engine = SyncEngine(store: store, deps: deps)
+        // Simulate another discovery importing the same Doc while this one
+        // is awaiting the export.
+        backend.duringExport = {
+            backend.duringExport = nil
+            var other = Sticky.makeNew(title: "X")
+            other.googleDocId = "doc-x"
+            try store.upsert(other)
+        }
+
+        let imported = try await engine.discoverRemoteStickies()
+
+        #expect(imported == 0)
+        #expect(try store.allActive().count == 1)
+    }
+
+    @Test func onlyUnauthorizedOrMissingScopeCountsAsAuthError() {
+        func err(_ domain: String, _ code: Int, _ body: String = "") -> NSError {
+            NSError(domain: domain, code: code, userInfo: [NSLocalizedDescriptionKey: body])
+        }
+        #expect(SyncEngine.isAuthError(err("GoogleDocs", 401)))
+        #expect(SyncEngine.isAuthError(err("GoogleDrive", 403,
+            #"{"error":{"code":403,"message":"Request had insufficient authentication scopes.","details":[{"reason":"ACCESS_TOKEN_SCOPE_INSUFFICIENT"}]}}"#)))
+        #expect(!SyncEngine.isAuthError(err("GoogleDocs", 403,
+            #"{"error":{"code":403,"errors":[{"reason":"userRateLimitExceeded"}]}}"#)))
+        #expect(!SyncEngine.isAuthError(err("GoogleDrive", 403,
+            #"{"error":{"code":403,"errors":[{"reason":"appNotAuthorizedToFile"}]}}"#)))
+        #expect(!SyncEngine.isAuthError(err("GoogleDocs", 500)))
+        #expect(SyncEngine.isAuthError(err("StickyDocsAuth", 401, "Not signed in")))
+    }
 }

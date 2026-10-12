@@ -206,6 +206,9 @@ final class SyncEngine {
             let html = try await deps.exportAsHTML(doc.id)
             let canonical = HTMLNormalizer.html(from: HTMLNormalizer.attributedString(from: html))
             let revisionId = try? await deps.fetchRevisionId(doc.id)
+            // Re-check after the awaits: an overlapping discovery may have
+            // imported this Doc meanwhile, and google_doc_id is UNIQUE.
+            guard try store.fetchByDocId(doc.id) == nil else { continue }
             let frame = StickyPlacement.nextFrame()
             let now = Date()
             let sticky = Sticky(
@@ -293,16 +296,36 @@ final class SyncEngine {
         }
     }
 
-    private static func isAuthError(_ error: Error) -> Bool {
+    static func isAuthError(_ error: Error) -> Bool {
         let ns = error as NSError
         if ns.domain == "GoogleDocs" || ns.domain == "GoogleDrive" {
-            return ns.code == 401 || ns.code == 403
+            if ns.code == 401 { return true }
+            // 403 is usually NOT an auth problem: rate limits
+            // (rateLimitExceeded/userRateLimitExceeded) are transient, and
+            // per-file denials (e.g. a Doc this OAuth client can't see under
+            // drive.file) only affect one sticky. Signing out for those would
+            // wipe tokens for nothing. Only a missing scope is fixed by
+            // re-auth. The client errors carry Google's response body as
+            // localizedDescription, which names the reason.
+            if ns.code == 403 {
+                let body = ns.localizedDescription
+                return Self.insufficientScopeMarkers.contains {
+                    body.range(of: $0, options: .caseInsensitive) != nil
+                }
+            }
+            return false
         }
         // AuthService.AuthError.notSignedIn surfaces as the same NSError shape
         // after bridging via localizedDescription; matching by message keeps the
         // engine free of an AuthService dependency for this comparison.
         return ns.localizedDescription == "Not signed in"
     }
+
+    private static let insufficientScopeMarkers = [
+        "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
+        "insufficientPermissions",
+        "insufficient authentication scopes",
+    ]
 
     private static let notSignedInError = NSError(
         domain: "StickyDocsAuth",

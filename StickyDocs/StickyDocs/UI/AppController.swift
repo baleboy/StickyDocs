@@ -29,6 +29,12 @@ final class AppController: ObservableObject {
     private let pathMonitor = NWPathMonitor()
     private var lastPathStatus: NWPath.Status?
     private var keepOnTopHotKey: GlobalHotKey?
+    // syncNow() can be triggered from several places at once (reconnect,
+    // sign-in, Sync Now, onboarding). Overlapping runs would discover and
+    // import the same Docs twice; instead, later callers wait for the
+    // running sync and request one more pass so their trigger isn't lost.
+    private var syncNowTask: Task<Void, Never>?
+    private var syncNowRerunRequested = false
 
     private init() {
         do {
@@ -276,6 +282,25 @@ final class AppController: ObservableObject {
     // stashes local into conflict_backup_html and pendingPush is cleared - so
     // the subsequent push pass simply skips it.
     func syncNow() async {
+        if let running = syncNowTask {
+            syncNowRerunRequested = true
+            await running.value
+            return
+        }
+        let task = Task { @MainActor in
+            repeat {
+                self.syncNowRerunRequested = false
+                await self.performSyncNow()
+            } while self.syncNowRerunRequested
+            // Cleared here, in the same main-actor turn as the final rerun
+            // check, so no caller can join a task that has already finished.
+            self.syncNowTask = nil
+        }
+        syncNowTask = task
+        await task.value
+    }
+
+    private func performSyncNow() async {
         guard AuthService.shared.isSignedIn else { return }
         // "Fresh install on a second Mac" case: local store empty + Drive has
         // at least one tagged sticky to import. Open the All Stickies panel
@@ -406,12 +431,23 @@ final class FolderIdCache {
     private static let defaultFolderName = "Stickies"
 
     private let store: StickyStore
-    private let drive: GoogleDriveClient
+    private let findOrCreateFolder: (String) async throws -> String
     private var cached: String?
+    // Shared by concurrent callers so two stickies pushing for the first time
+    // don't each run findOrCreateFolder (list-then-create isn't atomic) and
+    // create two folders.
+    private var inFlight: Task<String, Error>?
+    // Bumped by invalidate() so a lookup that finishes after a sign-out
+    // doesn't cache the previous account's folder id.
+    private var generation = 0
 
-    init(store: StickyStore, drive: GoogleDriveClient) {
+    convenience init(store: StickyStore, drive: GoogleDriveClient) {
+        self.init(store: store, findOrCreateFolder: { try await drive.findOrCreateFolder(named: $0) })
+    }
+
+    init(store: StickyStore, findOrCreateFolder: @escaping (String) async throws -> String) {
         self.store = store
-        self.drive = drive
+        self.findOrCreateFolder = findOrCreateFolder
         self.cached = try? store.getAppState(key: OnboardingKeys.folderId)
     }
 
@@ -423,10 +459,18 @@ final class FolderIdCache {
             cached = stored
             return stored
         }
+        if let inFlight { return try await inFlight.value }
         let name = (try? store.getAppState(key: OnboardingKeys.folderName)) ?? Self.defaultFolderName
-        let id = try await drive.findOrCreateFolder(named: name)
-        cached = id
-        try? store.setAppState(key: OnboardingKeys.folderId, value: id)
+        let findOrCreateFolder = findOrCreateFolder
+        let task = Task { @MainActor in try await findOrCreateFolder(name) }
+        inFlight = task
+        let startGeneration = generation
+        defer { if generation == startGeneration { inFlight = nil } }
+        let id = try await task.value
+        if generation == startGeneration {
+            cached = id
+            try? store.setAppState(key: OnboardingKeys.folderId, value: id)
+        }
         return id
     }
 
@@ -436,5 +480,7 @@ final class FolderIdCache {
 
     func invalidate() {
         cached = nil
+        inFlight = nil
+        generation += 1
     }
 }
