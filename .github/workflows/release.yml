@@ -253,15 +253,14 @@ jobs:
           fi
           set -e
 
-          # The ticket can take a while to reach CloudKit after "Accepted",
-          # and stapler fails (error 68) until it does. Retry with backoff.
+          # Both stapler calls fetch the ticket from CloudKit, which can lag
+          # behind "Accepted" or drop the connection (error 68). Retry with backoff.
           for attempt in 1 2 3 4 5 6; do
-            xcrun stapler staple "$APP_PATH" && break
+            xcrun stapler staple "$APP_PATH" && xcrun stapler validate "$APP_PATH" && break
             if [ $attempt -eq 6 ]; then exit 1; fi
             echo "Staple attempt $attempt failed; retrying in $((attempt * 20))s"
             sleep $((attempt * 20))
           done
-          xcrun stapler validate "$APP_PATH"
 
       - name: Package zip
         id: package
@@ -327,15 +326,14 @@ jobs:
             exit 1
           fi
           set -e
-          # The ticket can take a while to reach CloudKit after "Accepted",
-          # and stapler fails (error 68) until it does. Retry with backoff.
+          # Both stapler calls fetch the ticket from CloudKit, which can lag
+          # behind "Accepted" or drop the connection (error 68). Retry with backoff.
           for attempt in 1 2 3 4 5 6; do
-            xcrun stapler staple "$DMG_PATH" && break
+            xcrun stapler staple "$DMG_PATH" && xcrun stapler validate "$DMG_PATH" && break
             if [ $attempt -eq 6 ]; then exit 1; fi
             echo "Staple attempt $attempt failed; retrying in $((attempt * 20))s"
             sleep $((attempt * 20))
           done
-          xcrun stapler validate "$DMG_PATH"
 
       # Stable-filename copy so `releases/latest/download/StickyDocs.dmg`
       # always resolves to the newest release. The versioned DMG remains
