@@ -68,7 +68,7 @@ struct StickyDocsApp: App {
             attributes: [.font: body]
         ))
 
-        let project = "https://github.com/baleboy/StickyDocs"
+        let project = "https://baleware.com/stickydocs"
         result.append(NSAttributedString(
             string: project + "\n\n",
             attributes: [
