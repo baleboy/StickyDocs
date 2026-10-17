@@ -66,6 +66,7 @@ The onboarding gate is `onboarding_complete` in the DB's `app_state` table (`App
 - [ ] **Across Spaces.** Switch to a different Space via Mission Control or trackpad. The sticky is still visible in the same screen position. Repeat with "Keep Stickies on Top" off — stickies still follow across Spaces.
 - [ ] **Drag to move.** Drag the sticky from anywhere in the top 16-pixel strip (above the text) or from a non-text area. The sticky moves smoothly. Frame persists across relaunch.
 - [ ] **Resize.** Drag the bottom-right corner. Frame persists across relaunch.
+- [ ] **Tiling doesn't stick.** Drag a sticky to the menu bar so macOS fills the screen with it, then quit and relaunch. The sticky comes back at its last hand-dragged size, not screen-sized.
 - [ ] **Close (✕) button = hide.** Hover over the sticky — a small ✕ appears top-left and a small trash icon top-right. Click ✕: window closes silently. Sticky still exists in All Stickies. Doc remains in Drive. Sticky does NOT auto-reopen on next launch (reopen via All Stickies → click row).
 - [ ] **Delete (trash) button = remove.** Click the trash icon top-right. Confirmation dialog appears ("Delete this sticky?" with "Also delete the Google Doc in Drive" checkbox, default off). Click Delete: window closes, sticky disappears from All Stickies. Click Cancel: nothing changes.
 - [ ] **Delete with also-delete-Doc.** On a synced sticky, click trash, tick the checkbox, click Delete. Sticky gone locally; Doc is removed from Drive.

@@ -20,7 +20,9 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
         self.onClose = onClose
         self.viewModel = StickyViewModel(sticky: sticky, engine: engine)
 
-        let frame = NSRect(x: sticky.frameX, y: sticky.frameY, width: sticky.frameW, height: sticky.frameH)
+        let frame = StickyPlacement.clampedToScreen(
+            NSRect(x: sticky.frameX, y: sticky.frameY, width: sticky.frameW, height: sticky.frameH)
+        )
         let style: NSWindow.StyleMask = [.borderless, .resizable]
         let window = StickyKeyableWindow(contentRect: frame, styleMask: style, backing: .buffered, defer: false)
         window.level = Self.level(keepOnTop: AppSettings.shared.keepOnTop)
@@ -42,6 +44,10 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
             onHide: { [weak self] in self?.requestHide() },
             onDelete: { [weak self] in self?.requestDelete() }
         ))
+        // The window size is the user's, not SwiftUI's: without this, a
+        // change in the content's ideal size (banner, pulled text) can
+        // resize the window.
+        hosting.sizingOptions = []
         window.contentViewController = hosting
         window.setFrame(frame, display: false)
     }
@@ -133,12 +139,20 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
         flushPendingPush()
     }
 
+    // Only a user drag-resize persists the size. Programmatic resizes (macOS
+    // tiling/"Fill", SwiftUI sizing) are logged but not saved, so a transient
+    // screen-sized frame doesn't come back on the next launch.
     func windowDidResize(_ notification: Notification) {
-        persistFrame()
+        guard let window, !window.inLiveResize else { return }
+        NSLog("[StickyDocs] non-live resize of sticky \(stickyId) to \(NSStringFromRect(window.frame)) — not persisted")
+    }
+
+    func windowDidEndLiveResize(_ notification: Notification) {
+        persistFrame(includingSize: true)
     }
 
     func windowDidMove(_ notification: Notification) {
-        persistFrame()
+        persistFrame(includingSize: false)
     }
 
     private func flushPendingPush() {
@@ -162,14 +176,16 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    private func persistFrame() {
+    private func persistFrame(includingSize: Bool) {
         guard let frame = window?.frame else { return }
         Task { @MainActor in
             if var sticky = try? engine.store.fetch(id: stickyId) {
                 sticky.frameX = frame.origin.x
                 sticky.frameY = frame.origin.y
-                sticky.frameW = frame.size.width
-                sticky.frameH = frame.size.height
+                if includingSize {
+                    sticky.frameW = frame.size.width
+                    sticky.frameH = frame.size.height
+                }
                 try? engine.store.upsert(sticky)
             }
         }

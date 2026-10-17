@@ -37,4 +37,26 @@ enum StickyPlacement {
         defaults.set(Double(origin.y), forKey: lastOriginYKey)
         return CGRect(origin: origin, size: size)
     }
+
+    // Fits a saved frame onto the screen it overlaps most (or the main
+    // screen if it's now offscreen, e.g. a disconnected display): size is
+    // capped at the visible frame, then the origin is shifted inside it.
+    @MainActor
+    static func clampedToScreen(_ frame: CGRect) -> CGRect {
+        let screens = NSScreen.screens.map(\.visibleFrame)
+        let best = screens.max { a, b in
+            let ia = a.intersection(frame), ib = b.intersection(frame)
+            return (ia.isNull ? 0 : ia.width * ia.height) < (ib.isNull ? 0 : ib.width * ib.height)
+        }
+        let overlaps = best.map { !$0.intersection(frame).isNull } ?? false
+        guard let visible = overlaps ? best : (NSScreen.main?.visibleFrame ?? screens.first) else {
+            return frame
+        }
+        var result = frame
+        result.size.width = min(result.width, visible.width)
+        result.size.height = min(result.height, visible.height)
+        result.origin.x = min(max(result.minX, visible.minX), visible.maxX - result.width)
+        result.origin.y = min(max(result.minY, visible.minY), visible.maxY - result.height)
+        return result
+    }
 }
