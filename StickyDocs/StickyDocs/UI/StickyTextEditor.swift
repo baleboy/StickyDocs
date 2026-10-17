@@ -104,20 +104,69 @@ final class StickyNSTextView: NSTextView {
         super.insertText(string, replacementRange: replacementRange)
         let typed = (string as? String) ?? (string as? NSAttributedString)?.string
         guard !hasMarkedText(), let typed else { return }
-        if typed.count == 1, typed.first!.isWhitespace { linkURLBeforeIfNeeded(at: start) }
+        if typed.count == 1, typed.first!.isWhitespace, !insertingTrigger { wordEnded(at: start) }
         if typed == " " { convertListShortcutIfNeeded() }
     }
 
     override func insertNewline(_ sender: Any?) {
         let start = selectedRange().location
+        insertingTrigger = true
         super.insertNewline(sender)
-        linkURLBeforeIfNeeded(at: start)
+        insertingTrigger = false
+        wordEnded(at: start)
     }
 
     override func insertTab(_ sender: Any?) {
         let start = selectedRange().location
+        insertingTrigger = true
         super.insertTab(sender)
-        linkURLBeforeIfNeeded(at: start)
+        insertingTrigger = false
+        wordEnded(at: start)
+    }
+
+    // Set while Return or Tab is inserted, in case AppKit routes it through
+    // insertText, so the word before it is handled once, from the right spot.
+    private var insertingTrigger = false
+
+    // A space, Tab or Return was just inserted at `location`: expand a date
+    // shortcut typed before it, or else link a URL typed before it.
+    private func wordEnded(at location: Int) {
+        if !expandDateShortcutIfNeeded(endingAt: location) { linkURLBeforeIfNeeded(at: location) }
+    }
+
+    // MARK: - Date shortcuts
+
+    // Replaces an "@today"-style keyword ending at `location` with its value,
+    // as its own undo step, so ⌘Z right after brings back the keyword.
+    private func expandDateShortcutIfNeeded(endingAt location: Int) -> Bool {
+        guard let storage = textStorage,
+              let token = DateShortcut.token(endingAt: location, in: storage.string as NSString),
+              let value = DateShortcut.expansion(for: token.keyword)
+        else { return false }
+        var linked = false
+        storage.enumerateAttribute(.link, in: token.range) { value, _, stop in
+            if value != nil { linked = true; stop.pointee = true }
+        }
+        guard !linked else { return false }
+        breakUndoCoalescing()
+        // The trigger and the expansion arrive in the same event, so they'd
+        // share one undo group; close it so ⌘Z undoes only the expansion.
+        if let undoManager, undoManager.groupingLevel == 1 {
+            undoManager.endUndoGrouping()
+            undoManager.beginUndoGrouping()
+        }
+        guard shouldChangeText(in: token.range, replacementString: value) else { return false }
+        let cursor = selectedRange()
+        var attributes = storage.attributes(at: token.range.location, effectiveRange: nil)
+        attributes[.link] = nil
+        storage.replaceCharacters(in: token.range, with: NSAttributedString(string: value, attributes: attributes))
+        didChangeText()
+        let delta = (value as NSString).length - token.range.length
+        if cursor.location >= NSMaxRange(token.range) {
+            setSelectedRange(NSRange(location: cursor.location + delta, length: cursor.length))
+        }
+        breakUndoCoalescing()
+        return true
     }
 
     // Runs after the space is inserted, as its own undo step, so ⌘Z right

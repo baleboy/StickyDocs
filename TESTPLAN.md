@@ -90,6 +90,11 @@ The onboarding gate is `onboarding_complete` in the DB's `app_state` table (`App
 - [ ] **Return on an empty item ends the list.** In a list, press Return twice → the list ends and the new line is plain text.
 - [ ] **Backspace removes the bullet.** Cursor at the start of a list item's text, Backspace → the bullet/number is gone, the text stays as a plain paragraph.
 - [ ] **Shortcut lists sync like menu lists.** A list made with `- ` shows as a normal bulleted list in the Doc after blur, and the sticky goes pending (orange dot) right after the conversion.
+- [ ] **Date shortcuts.** Type `@today` then a space → replaced with today's date in the system's medium style (e.g. `17 Oct 2026`), and the space is kept. Same with Tab and Return. `@tomorrow` / `@yesterday` → the next / previous day; `@week` → the ISO week number (e.g. `W42`). Case doesn't matter (`@Today`).
+- [ ] **Date shortcut boundaries.** Typing `bob@today `, `@todays `, `@today. `, `@today.com ` or `@foo ` leaves the text as typed. `(@today ` expands.
+- [ ] **Undo a date shortcut.** Type `@today ` then ⌘Z immediately → the literal `@today ` comes back (one undo step).
+- [ ] **Pasted date keywords stay text.** Paste `on @today ok` → it stays as pasted.
+- [ ] **Date shortcut keeps formatting and syncs.** In a bold run or a list item, `@week ` expands to bold / stays in the item. The sticky goes pending right after, and after blur the Doc shows the date as plain text.
 - [ ] **Typed URL becomes a link.** Type `https://example.com` then a space (or Return / Tab) → it turns blue and underlined. Nothing is linked mid-word (typing `www.apple.` doesn't link `www.apple`). Same for `www.apple.com` (links to `https://www.apple.com/`) and `me@example.com` (a `mailto:` link). A bare `example.com` or `notes.txt` stays plain.
 - [ ] **Typed URL in a long existing sticky.** Open an old sticky with a lot of content (several screens, code snippets, quotes) and type `www.balenet.com` and a space at the end and in the middle → linked each time.
 - [ ] **Trailing punctuation excluded.** Type `See https://example.com.` and `(https://example.com)` → the period and the closing paren aren't part of the link.
