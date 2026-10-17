@@ -204,12 +204,18 @@ struct DateShortcutHintTests {
         #expect(e.textView.dateHint == nil)
     }
 
-    @Test func previewOnlyAtEndOfLine() {
+    @Test func previewShowsBelowKeywordMidLine() throws {
         let e = EditorHarness(html: "<p>due ok</p>")
         e.textView.setSelectedRange(NSRange(location: 3, length: 0))
         e.type(" @today")
-        #expect(e.textView.dateHint != nil)  // tinted
-        #expect(!e.textView.isDateHintPreviewVisible)
+        #expect(e.textView.isDateHintPreviewVisible)
+        let lm = e.textView.layoutManager!
+        let glyphs = lm.glyphRange(forCharacterRange: e.textView.dateHint!.range, actualCharacterRange: nil)
+        let word = lm.boundingRect(forGlyphRange: glyphs, in: e.textView.textContainer!)
+            .offsetBy(dx: e.textView.textContainerOrigin.x, dy: e.textView.textContainerOrigin.y)
+        let box = try #require(e.textView.dateHintPreviewFrame)
+        #expect(box.minY >= word.maxY)  // below the line, not over the text after the cursor
+        #expect(abs(box.minX - word.minX) < 1)
     }
 
     @Test func hintIsDisplayOnly() {
@@ -288,13 +294,32 @@ struct DateShortcutHintTests {
         #expect(e.html == "<p>due \(today) ok</p>")
     }
 
-    @Test func noHintWhenAWordFollows() {
-        let e = EditorHarness(html: "<p>@todayok</p>")
-        e.textView.setSelectedRange(NSRange(location: 6, length: 0))
-        #expect(e.textView.dateHint == nil)
-        // Tab is then an ordinary trigger: the tab separates the keyword,
-        // which expands as with a space.
+    @Test func hintShowsWhenAWordFollows() {
+        let e = EditorHarness(html: "<p>ok</p>")
+        e.textView.setSelectedRange(NSRange(location: 0, length: 0))
+        e.type("@today")
+        #expect(e.textView.isDateHintPreviewVisible)
+        e.type(" ")
+        #expect(e.textView.string.hasPrefix("\(today) ok"))
+    }
+
+    @Test func tabBeforeAWordAddsASpace() {
+        let e = EditorHarness(html: "<p>ok</p>")
+        e.textView.setSelectedRange(NSRange(location: 0, length: 0))
+        e.type("@today")
         e.textView.insertTab(nil)
-        #expect(e.textView.string.hasPrefix("\(today)\tok"))
+        #expect(e.textView.string.hasPrefix("\(today) ok"))
+        #expect(e.textView.selectedRange().location == ("\(today) " as NSString).length)
+        e.undo()
+        #expect(e.textView.string.hasPrefix("@todayok"))
+    }
+
+    @Test func previewAfterUndoWithTrailingSpace() {
+        let e = EditorHarness()
+        e.type("@today ")
+        e.undo()
+        e.textView.setSelectedRange(NSRange(location: 6, length: 0))  // between "@today" and the space
+        #expect(e.textView.dateHint != nil)
+        #expect(e.textView.isDateHintPreviewVisible)
     }
 }

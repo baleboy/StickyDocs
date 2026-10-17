@@ -119,8 +119,14 @@ final class StickyNSTextView: NSTextView {
     override func insertTab(_ sender: Any?) {
         let start = selectedRange().location
         // Tab accepts a previewed date shortcut, like an inline completion:
-        // the keyword expands and no tab is inserted.
-        if let hint = dateHint, start == NSMaxRange(hint.range), expandDateShortcutIfNeeded(endingAt: start) { return }
+        // the keyword expands and no tab is inserted. If a word follows
+        // directly ("@today|ok"), a space keeps it apart, as Space would.
+        if let hint = dateHint, start == NSMaxRange(hint.range) {
+            let ns = (textStorage?.string ?? "") as NSString
+            let wordFollows = start < ns.length
+                && Unicode.Scalar(ns.character(at: start)).map(CharacterSet.alphanumerics.contains) == true
+            if expandDateShortcutIfNeeded(endingAt: start, appending: wordFollows ? " " : "") { return }
+        }
         insertingTrigger = true
         super.insertTab(sender)
         insertingTrigger = false
@@ -141,8 +147,9 @@ final class StickyNSTextView: NSTextView {
 
     // Replaces an "@today"-style keyword ending at `location` with its value,
     // as its own undo step, so ⌘Z right after brings back the keyword.
-    private func expandDateShortcutIfNeeded(endingAt location: Int) -> Bool {
-        guard let (token, value) = dateShortcut(endingAt: location), let storage = textStorage else { return false }
+    private func expandDateShortcutIfNeeded(endingAt location: Int, appending suffix: String = "") -> Bool {
+        guard let (token, found) = dateShortcut(endingAt: location), let storage = textStorage else { return false }
+        let value = found + suffix
         breakUndoCoalescing()
         // The trigger and the expansion arrive in the same event, so they'd
         // share one undo group; close it so ⌘Z undoes only the expansion.
@@ -180,19 +187,33 @@ final class StickyNSTextView: NSTextView {
     }
 
     // While the cursor sits right after a shortcut that would expand, the
-    // keyword is tinted and its value previewed in grey after the cursor.
-    // Both are display-only (a temporary attribute and a label), so they
-    // never reach the text, undo or sync.
+    // keyword is tinted and its value previewed in a small box below it
+    // (above, at the bottom of the sticky), so it never covers the text
+    // being typed. Both are display-only (a temporary attribute and an
+    // overlay view), so they never reach the text, undo or sync.
     private(set) var dateHint: (range: NSRange, value: String)?
-    private lazy var dateHintLabel: NSTextField = {
-        let label = NSTextField(labelWithString: "")
-        label.textColor = NSColor.black.withAlphaComponent(0.4)
-        label.lineBreakMode = .byClipping
-        label.isHidden = true
-        addSubview(label)
-        return label
+    private lazy var dateHintLabel = NSTextField(labelWithString: "")
+    private lazy var dateHintBox: NSView = {
+        let box = NSView()
+        box.wantsLayer = true
+        box.layer?.backgroundColor = NSColor(white: 1, alpha: 0.97).cgColor
+        box.layer?.cornerRadius = 4
+        box.layer?.borderWidth = 0.5
+        box.layer?.borderColor = NSColor.black.withAlphaComponent(0.15).cgColor
+        box.layer?.shadowOpacity = 0.15
+        box.layer?.shadowRadius = 2
+        box.layer?.shadowOffset = CGSize(width: 0, height: -1)
+        dateHintLabel.lineBreakMode = .byTruncatingTail
+        box.addSubview(dateHintLabel)
+        box.isHidden = true
+        addSubview(box)
+        // The text view is only as tall as its text; below the last line
+        // the box draws into the sticky's empty space.
+        clipsToBounds = false
+        return box
     }()
-    var isDateHintPreviewVisible: Bool { dateHint != nil && !dateHintLabel.isHidden }
+    var isDateHintPreviewVisible: Bool { dateHint != nil && !dateHintBox.isHidden }
+    var dateHintPreviewFrame: NSRect? { isDateHintPreviewVisible ? dateHintBox.frame : nil }
 
     // A shortcut dismissed with Esc: it stays literal text until an edit
     // touches it. Positions only, kept while the text view lives.
@@ -203,37 +224,52 @@ final class StickyNSTextView: NSTextView {
         guard let layoutManager, let textContainer, let storage = textStorage else { return }
         if dateHint != nil {
             dateHint = nil
-            dateHintLabel.isHidden = true
+            dateHintBox.isHidden = true
             // The whole text, since edits may have moved the old range.
             layoutManager.removeTemporaryAttribute(.backgroundColor,
                                                    forCharacterRange: NSRange(location: 0, length: storage.length))
         }
         let cursor = selectedRange()
-        let ns = storage.string as NSString
-        // Not when the keyword runs straight into a word ("@today|ok").
-        let wordFollows = cursor.location < ns.length
-            && Unicode.Scalar(ns.character(at: cursor.location)).map(CharacterSet.alphanumerics.contains) == true
-        guard windowIsKey, window?.firstResponder === self, cursor.length == 0, !wordFollows,
+        guard windowIsKey, window?.firstResponder === self, cursor.length == 0,
               let (token, value) = dateShortcut(endingAt: cursor.location) else { return }
         dateHint = (token.range, value)
         layoutManager.addTemporaryAttribute(.backgroundColor, value: NSColor.black.withAlphaComponent(0.1),
                                             forCharacterRange: token.range)
-        // The preview would cover any text after the cursor, so it only
-        // shows at the end of a line; the tint alone marks it elsewhere.
-        guard cursor.location == ns.length || ns.character(at: cursor.location) == 0x0A else { return }
+
+        // Anchor to the keyword's last line, in case it wrapped.
         let glyphs = layoutManager.glyphRange(forCharacterRange: token.range, actualCharacterRange: nil)
-        let rect = layoutManager.boundingRect(forGlyphRange: glyphs, in: textContainer)
+        var line = NSRange()
+        layoutManager.lineFragmentRect(forGlyphAt: NSMaxRange(glyphs) - 1, effectiveRange: &line)
+        let onLastLine = NSIntersectionRange(glyphs, line)
+        let word = layoutManager.boundingRect(forGlyphRange: onLastLine.length > 0 ? onLastLine : glyphs, in: textContainer)
+            .offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+
         let font = storage.attribute(.font, at: token.range.location, effectiveRange: nil) as? NSFont
             ?? NSFont.systemFont(ofSize: 14)
-        dateHintLabel.font = font
-        dateHintLabel.stringValue = value
-        let size = dateHintLabel.fittingSize
-        let x = textContainerOrigin.x + rect.maxX + 4
-        let width = min(size.width, bounds.maxX - textContainerInset.width - x)
-        guard width >= 12 else { return }
-        dateHintLabel.frame = NSRect(x: x, y: textContainerOrigin.y + rect.maxY - size.height,
-                                     width: width, height: size.height)
-        dateHintLabel.isHidden = false
+        let text = NSMutableAttributedString(string: value, attributes: [
+            .font: NSFont.systemFont(ofSize: max(11, font.pointSize - 2)),
+            .foregroundColor: NSColor.black.withAlphaComponent(0.75)
+        ])
+        // Tab accepts (see insertTab).
+        text.append(NSAttributedString(string: "  ⇥", attributes: [
+            .font: NSFont.systemFont(ofSize: max(10, font.pointSize - 3)),
+            .foregroundColor: NSColor.black.withAlphaComponent(0.4)
+        ]))
+        dateHintLabel.attributedStringValue = text
+        let padding = NSSize(width: 6, height: 2)
+        let labelSize = dateHintLabel.fittingSize
+        let left = textContainerInset.width, right = bounds.maxX - textContainerInset.width
+        let width = min(labelSize.width + 2 * padding.width, right - left)
+        let height = labelSize.height + 2 * padding.height
+        let x = max(left, min(word.minX, right - width))
+        // The sticky's visible area, which can extend below the text.
+        let visible = enclosingScrollView.map { convert($0.contentView.bounds, from: $0.contentView) } ?? visibleRect
+        var y = word.maxY + 2
+        if y + height > visible.maxY, word.minY - 2 - height >= visible.minY { y = word.minY - 2 - height }
+        dateHintBox.frame = NSRect(x: x, y: y, width: width, height: height)
+        dateHintLabel.frame = NSRect(x: padding.width, y: padding.height,
+                                     width: width - 2 * padding.width, height: labelSize.height)
+        dateHintBox.isHidden = false
     }
 
     // Esc while a hint shows dismisses it: the keyword stays as typed, and
