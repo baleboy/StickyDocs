@@ -25,7 +25,7 @@ final class EditorHarness {
         textView.allowsUndo = true
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
-        textView.isAutomaticLinkDetectionEnabled = true
+        textView.isAutomaticLinkDetectionEnabled = false
         textView.font = NSFont.systemFont(ofSize: 14)
         window.contentView!.addSubview(textView)
         storage.setAttributedString(HTMLNormalizer.attributedString(from: html))
@@ -221,17 +221,54 @@ struct StickyEditorTests {
         #expect(e.html.contains(#"href="https://example.com/""#))
     }
 
-    @Test func typedWwwBecomesHttpsLinkAndTypingAfterDoesNotExtend() async throws {
+    @Test func typedWwwBecomesHttpsLinkAndTypingAfterDoesNotExtend() {
         let e = EditorHarness()
         e.type("see www.apple.com and example.com ")
-        // Automatic detection runs asynchronously through NSSpellChecker.
-        for _ in 0..<40 where !e.html.contains("<a ") { try await Task.sleep(for: .milliseconds(50)) }
         #expect(e.html == #"<p>see <a href="https://www.apple.com/">www.apple.com</a> and example.com </p>"#)
         // Typing right at the end of the link stays outside it.
         let end = (e.textView.string as NSString).range(of: "www.apple.com").upperBound
         e.textView.setSelectedRange(NSRange(location: end, length: 0))
         e.type("x")
         #expect(e.html.contains(#"<a href="https://www.apple.com/">www.apple.com</a>x"#))
+    }
+
+    @Test func returnAndTrailingPunctuationEndALink() {
+        let e = EditorHarness()
+        e.type("go https://example.com/a.\nnext")
+        #expect(e.html == #"<p>go <a href="https://example.com/a">https://example.com/a</a>.</p><p>next</p>"#)
+    }
+
+    @Test func partialURLIsNotLinkedMidWord() {
+        let e = EditorHarness()
+        e.type("www.apple.com")
+        #expect(!e.html.contains("<a "))
+    }
+
+    @Test func undoRemovesTypedLinkKeepsText() {
+        let e = EditorHarness()
+        e.type("https://example.com ")
+        #expect(e.html.contains("<a "))
+        e.undo()
+        #expect(e.html == "<p>https://example.com </p>")
+    }
+
+    @Test func typingLaterInParagraphLeavesOlderPlainURL() {
+        // e.g. one the user removed the link from.
+        let e = EditorHarness(html: "<p>https://example.com and</p>")
+        e.type(" more ")
+        #expect(!e.html.contains("<a "))
+    }
+
+    // Regression: AppKit's spell-checker-based detection re-checked loaded
+    // text from the top and silently never linked in some existing notes.
+    @Test func typingInExistingStickyDetectsLinks() {
+        let lines = (1...40).map { "<p>line \($0) of '{\"some\":\"json\"}’ --flag</p><p></p><p></p>" }.joined()
+        let e = EditorHarness(html: "<p><b>Groceries</b></p><ul><li>milk</li></ul>" + lines)
+        e.type("www.balenet.com ")
+        #expect(e.html.contains(#"<a href="https://www.balenet.com/">www.balenet.com</a>"#))
+        e.textView.setSelectedRange(NSRange(location: 20, length: 0))
+        e.type(" https://example.com/x ")
+        #expect(e.html.contains(#"<a href="https://example.com/x">https://example.com/x</a>"#))
     }
 
     @Test func loadingDoesNotDetectLinks() {

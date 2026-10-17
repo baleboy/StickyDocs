@@ -90,7 +90,8 @@ The onboarding gate is `onboarding_complete` in the DB's `app_state` table (`App
 - [ ] **Return on an empty item ends the list.** In a list, press Return twice → the list ends and the new line is plain text.
 - [ ] **Backspace removes the bullet.** Cursor at the start of a list item's text, Backspace → the bullet/number is gone, the text stays as a plain paragraph.
 - [ ] **Shortcut lists sync like menu lists.** A list made with `- ` shows as a normal bulleted list in the Doc after blur, and the sticky goes pending (orange dot) right after the conversion.
-- [ ] **Typed URL becomes a link.** Type `https://example.com` then a space (or Return / punctuation) → it turns blue and underlined. Same for `www.apple.com` (links to `https://www.apple.com/`) and `me@example.com` (a `mailto:` link). A bare `example.com` or `notes.txt` stays plain.
+- [ ] **Typed URL becomes a link.** Type `https://example.com` then a space (or Return / Tab) → it turns blue and underlined. Nothing is linked mid-word (typing `www.apple.` doesn't link `www.apple`). Same for `www.apple.com` (links to `https://www.apple.com/`) and `me@example.com` (a `mailto:` link). A bare `example.com` or `notes.txt` stays plain.
+- [ ] **Typed URL in a long existing sticky.** Open an old sticky with a lot of content (several screens, code snippets, quotes) and type `www.balenet.com` and a space at the end and in the middle → linked each time.
 - [ ] **Trailing punctuation excluded.** Type `See https://example.com.` and `(https://example.com)` → the period and the closing paren aren't part of the link.
 - [ ] **Pasted URL becomes a link.** Paste `visit https://example.org/x now` → only the URL is linked.
 - [ ] **Undo detection.** Type a URL and a space, then ⌘Z → the link is removed, the text stays.

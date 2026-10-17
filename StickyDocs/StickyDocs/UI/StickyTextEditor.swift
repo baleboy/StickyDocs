@@ -100,9 +100,24 @@ final class StickyNSTextView: NSTextView {
     }
 
     override func insertText(_ string: Any, replacementRange: NSRange) {
+        let start = replacementRange.location != NSNotFound ? replacementRange.location : selectedRange().location
         super.insertText(string, replacementRange: replacementRange)
         let typed = (string as? String) ?? (string as? NSAttributedString)?.string
-        if typed == " " && !hasMarkedText() { convertListShortcutIfNeeded() }
+        guard !hasMarkedText(), let typed else { return }
+        if typed.count == 1, typed.first!.isWhitespace { linkURLBeforeIfNeeded(at: start) }
+        if typed == " " { convertListShortcutIfNeeded() }
+    }
+
+    override func insertNewline(_ sender: Any?) {
+        let start = selectedRange().location
+        super.insertNewline(sender)
+        linkURLBeforeIfNeeded(at: start)
+    }
+
+    override func insertTab(_ sender: Any?) {
+        let start = selectedRange().location
+        super.insertTab(sender)
+        linkURLBeforeIfNeeded(at: start)
     }
 
     // Runs after the space is inserted, as its own undo step, so ⌘Z right
@@ -235,24 +250,45 @@ final class StickyNSTextView: NSTextView {
         }
     }
 
-    override func handleTextCheckingResults(_ results: [NSTextCheckingResult], forRange range: NSRange,
-                                            types checkingTypes: NSTextCheckingTypes,
-                                            options: [NSSpellChecker.OptionKey: Any] = [:],
-                                            orthography: NSOrthography, wordCount: Int) {
-        let ns = string as NSString
-        let filtered: [NSTextCheckingResult] = results.compactMap { result in
-            guard result.resultType == .link, let url = result.url else { return result }
-            guard NSMaxRange(result.range) <= ns.length,
-                  let accepted = Self.acceptedLink(for: ns.substring(with: result.range), detected: url)
-            else { return nil }
-            return accepted == url ? result : NSTextCheckingResult.linkCheckingResult(range: result.range, url: accepted)
+    var detectsLinks = true
+
+    // Links the URL typed just before `location`, where a space, tab or
+    // Return was inserted, as its own undo step. Done here rather than with
+    // AppKit's automatic link detection, which re-checks unchecked text from
+    // the start of the document through the spell checker and, on some
+    // longer loaded notes, never delivers a result.
+    private func linkURLBeforeIfNeeded(at location: Int) {
+        guard detectsLinks, let storage = textStorage, location > 0, location <= storage.length else { return }
+        let ns = storage.string as NSString
+        let paragraph = ns.paragraphRange(for: NSRange(location: location - 1, length: 0))
+        let before = NSRange(location: paragraph.location, length: location - paragraph.location)
+        let text = ns.substring(with: before)
+        // Only the word just typed: an older plain URL in the same paragraph
+        // (say, one the user unlinked) is left alone.
+        guard let link = Self.detectLinks(in: text).last,
+              !(text as NSString).substring(from: NSMaxRange(link.range)).contains(where: \.isWhitespace)
+        else { return }
+        let range = NSRange(location: before.location + link.range.location, length: link.range.length)
+        var linked = false
+        storage.enumerateAttribute(.link, in: range) { value, _, stop in
+            if value != nil { linked = true; stop.pointee = true }
         }
-        super.handleTextCheckingResults(filtered, forRange: range, types: checkingTypes, options: options,
-                                        orthography: orthography, wordCount: wordCount)
+        guard !linked else { return }
+        breakUndoCoalescing()
+        // The space and the link arrive in the same event, so they'd share
+        // one undo group; close it so ⌘Z undoes only the link.
+        if let undoManager, undoManager.groupingLevel == 1 {
+            undoManager.endUndoGrouping()
+            undoManager.beginUndoGrouping()
+        }
+        guard shouldChangeText(in: range, replacementString: nil) else { return }
+        storage.addAttribute(.link, value: link.url, range: range)
+        didChangeText()
+        breakUndoCoalescing()
     }
 
-    // Automatic detection only fires as you type; run it over pasted text
-    // too, leaving any links the pasted rich text already carried.
+    // Run detection over pasted text too, leaving any links the pasted rich
+    // text already carried.
     override func paste(_ sender: Any?) { detectingLinks { super.paste(sender) } }
     override func pasteAsPlainText(_ sender: Any?) { detectingLinks { super.pasteAsPlainText(sender) } }
     override func pasteAsRichText(_ sender: Any?) { detectingLinks { super.pasteAsRichText(sender) } }
@@ -261,7 +297,7 @@ final class StickyNSTextView: NSTextView {
         let start = selectedRange().location
         paste()
         let end = selectedRange().location
-        guard isAutomaticLinkDetectionEnabled, end > start, let storage = textStorage else { return }
+        guard detectsLinks, end > start, let storage = textStorage else { return }
         let pasted = NSRange(location: start, length: end - start)
         let links = Self.detectLinks(in: (storage.string as NSString).substring(with: pasted)).filter { link in
             let range = NSRange(location: start + link.range.location, length: link.range.length)
@@ -455,7 +491,8 @@ struct StickyTextEditor: NSViewRepresentable {
         textView.allowsUndo = true
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
-        textView.isAutomaticLinkDetectionEnabled = true
+        // StickyNSTextView detects links itself (see linkURLBeforeIfNeeded).
+        textView.isAutomaticLinkDetectionEnabled = false
         // Display-only: link styling isn't stored as underline/color in the
         // text, so it never becomes <u> in the synced HTML.
         textView.linkTextAttributes = [
