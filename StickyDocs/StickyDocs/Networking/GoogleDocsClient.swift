@@ -124,7 +124,10 @@ private struct BatchUpdateBody: Encodable {
 enum DocsRequest: Encodable {
     case deleteContentRange(DocsRange)
     case insertText(location: Int, text: String)
-    case updateTextStyle(DocsRange, bold: Bool?, italic: Bool?, underline: Bool?)
+    // `link` is written with Docs' own link styling (underline + link
+    // color), as the Docs editor does. `resetLink` instead clears any link
+    // and text color on the range.
+    case updateTextStyle(DocsRange, bold: Bool?, italic: Bool?, underline: Bool?, link: URL? = nil, resetLink: Bool = false)
     case createParagraphBullets(DocsRange, ordered: Bool)
     case deleteParagraphBullets(DocsRange)
 
@@ -135,8 +138,9 @@ enum DocsRequest: Encodable {
             try container.encode(DeleteContentRange(range: r), forKey: .deleteContentRange)
         case .insertText(let loc, let text):
             try container.encode(InsertText(location: .init(index: loc), text: text), forKey: .insertText)
-        case .updateTextStyle(let r, let bold, let italic, let underline):
-            try container.encode(UpdateTextStyle(range: r, bold: bold, italic: italic, underline: underline),
+        case .updateTextStyle(let r, let bold, let italic, let underline, let link, let resetLink):
+            try container.encode(UpdateTextStyle(range: r, bold: bold, italic: italic, underline: underline,
+                                                 link: link, resetLink: resetLink),
                                  forKey: .updateTextStyle)
         case .createParagraphBullets(let r, let ordered):
             try container.encode(CreateParagraphBullets(
@@ -169,6 +173,11 @@ private struct UpdateTextStyle: Encodable {
     let bold: Bool?
     let italic: Bool?
     let underline: Bool?
+    let link: URL?
+    let resetLink: Bool
+
+    // Docs' default link color, #1155cc.
+    static let linkColor = RGBColor(red: 17.0 / 255, green: 85.0 / 255, blue: 204.0 / 255)
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -177,12 +186,28 @@ private struct UpdateTextStyle: Encodable {
         var fields: [String] = []
         if let b = bold { try ts.encode(b, forKey: .bold); fields.append("bold") }
         if let i = italic { try ts.encode(i, forKey: .italic); fields.append("italic") }
-        if let u = underline { try ts.encode(u, forKey: .underline); fields.append("underline") }
+        if let link {
+            try ts.encode(true, forKey: .underline)
+            try ts.encode(Link(url: link.absoluteString), forKey: .link)
+            try ts.encode(OptionalColor(color: .init(rgbColor: Self.linkColor)), forKey: .foregroundColor)
+            fields += ["underline", "link", "foregroundColor"]
+        } else if let u = underline {
+            try ts.encode(u, forKey: .underline); fields.append("underline")
+        }
+        // A field named in `fields` but absent from `textStyle` is cleared.
+        if resetLink && link == nil { fields += ["link", "foregroundColor"] }
         try c.encode(fields.joined(separator: ","), forKey: .fields)
     }
 
+    struct Link: Encodable { let url: String }
+    struct RGBColor: Encodable { let red: Double; let green: Double; let blue: Double }
+    struct OptionalColor: Encodable {
+        struct Color: Encodable { let rgbColor: RGBColor }
+        let color: Color
+    }
+
     enum CodingKeys: String, CodingKey { case range, textStyle, fields }
-    enum StyleKeys: String, CodingKey { case bold, italic, underline }
+    enum StyleKeys: String, CodingKey { case bold, italic, underline, link, foregroundColor }
 }
 private struct CreateParagraphBullets: Encodable {
     let range: DocsRange
@@ -219,13 +244,13 @@ enum DocsBatchEncoder {
         if !insertText.isEmpty {
             requests.append(.insertText(location: 1, text: insertText))
             // Reset all inline styles on the inserted range. Without this, the
-            // inserted text inherits whatever bold/italic/underline state was
-            // active at the insertion point (which can persist from a prior
-            // batchUpdate's deleted content).
+            // inserted text inherits whatever bold/italic/underline/link state
+            // was active at the insertion point (which can persist from a
+            // prior batchUpdate's deleted content).
             let insertLen = (insertText as NSString).length
             requests.append(.updateTextStyle(
                 DocsRange(startIndex: 1, endIndex: 1 + insertLen),
-                bold: false, italic: false, underline: false
+                bold: false, italic: false, underline: false, resetLink: true
             ))
             // Reset paragraph-level bullets on the entire body. Bullet state is
             // a paragraph property; deleteContentRange doesn't clear it from the
@@ -240,7 +265,8 @@ enum DocsBatchEncoder {
                 DocsRange(startIndex: run.start, endIndex: run.end),
                 bold: run.bold ? true : nil,
                 italic: run.italic ? true : nil,
-                underline: run.underline ? true : nil
+                underline: run.underline ? true : nil,
+                link: run.link
             ))
         }
         for bullet in walk.bulletRanges {
@@ -252,7 +278,7 @@ enum DocsBatchEncoder {
         return Result(requests: requests)
     }
 
-    private struct StyleRun { let start: Int; let end: Int; let bold: Bool; let italic: Bool; let underline: Bool }
+    private struct StyleRun { let start: Int; let end: Int; let bold: Bool; let italic: Bool; let underline: Bool; let link: URL? }
     private struct BulletRange { let start: Int; let end: Int; let ordered: Bool }
     private struct Walk { let plainText: String; let styleRuns: [StyleRun]; let bulletRanges: [BulletRange] }
 
@@ -288,10 +314,10 @@ enum DocsBatchEncoder {
                 plainText += runText
                 docsIdx = runEnd
 
-                let (bold, italic, underline) = extractStyles(attrs)
-                if bold || italic || underline {
+                let (bold, italic, underline, link) = extractStyles(attrs)
+                if bold || italic || underline || link != nil {
                     styleRuns.append(StyleRun(start: runStart, end: runEnd,
-                                              bold: bold, italic: italic, underline: underline))
+                                              bold: bold, italic: italic, underline: underline, link: link))
                 }
             }
 
@@ -330,26 +356,14 @@ enum DocsBatchEncoder {
     private enum ParagraphListKind { case none, bullet, number }
 
     private static func paragraphListKind(_ paragraph: NSAttributedString) -> ParagraphListKind {
-        guard paragraph.length > 0 else { return .none }
-        var hasList = false
-        paragraph.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: paragraph.length)) { value, _, stop in
-            if let style = value as? NSParagraphStyle, !style.textLists.isEmpty {
-                hasList = true
-                stop.pointee = true
-            }
-        }
-        guard hasList else { return .none }
-        var ordered = false
-        paragraph.enumerateAttribute(HTMLNormalizer.orderedKey, in: NSRange(location: 0, length: paragraph.length)) { value, _, stop in
-            if (value as? Bool) == true { ordered = true; stop.pointee = true }
-        }
+        guard let ordered = HTMLNormalizer.isOrderedList(paragraph) else { return .none }
         return ordered ? .number : .bullet
     }
 
     private static func trimLeadingMarker(_ paragraph: NSAttributedString, kind: ParagraphListKind) -> NSAttributedString {
         let pattern: String
         switch kind {
-        case .bullet: pattern = #"^\s*[•·▪◦◯●○■□*-]\s*"#
+        case .bullet: pattern = #"^\s*[•⦁·▪◦◯●○■□*-]\s*"#
         case .number: pattern = #"^\s*\d+[.)]?\s*"#
         case .none: return paragraph
         }
@@ -363,8 +377,9 @@ enum DocsBatchEncoder {
         return paragraph.attributedSubstring(from: NSRange(location: start, length: paragraph.length - start))
     }
 
-    private static func extractStyles(_ attrs: [NSAttributedString.Key: Any]) -> (bold: Bool, italic: Bool, underline: Bool) {
+    private static func extractStyles(_ attrs: [NSAttributedString.Key: Any]) -> (bold: Bool, italic: Bool, underline: Bool, link: URL?) {
         var bold = false, italic = false, underline = false
+        let link = HTMLNormalizer.allowedLink(attrs[.link])
         if let font = attrs[.font] as? NSFont {
             let t = font.fontDescriptor.symbolicTraits
             bold = t.contains(.bold)
@@ -372,6 +387,7 @@ enum DocsBatchEncoder {
         }
         if let n = attrs[.underlineStyle] as? Int { underline = (n != 0) }
         else if let n = attrs[.underlineStyle] as? NSNumber { underline = (n.intValue != 0) }
-        return (bold, italic, underline)
+        // Link styling stands in for underline, as in HTMLNormalizer.
+        return (bold, italic, link == nil && underline, link)
     }
 }

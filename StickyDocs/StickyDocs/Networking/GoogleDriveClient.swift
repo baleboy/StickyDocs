@@ -135,6 +135,23 @@ struct GoogleDriveClient {
         return try JSONDecoder().decode(Resp.self, from: data).trashed
     }
 
+    // The signed-in account's email, shown in the All Stickies launcher.
+    // about.get is allowed under the drive.file scope.
+    func fetchUserEmail() async throws -> String? {
+        let token = try await accessToken()
+        var comps = URLComponents(string: "https://www.googleapis.com/drive/v3/about")!
+        comps.queryItems = [.init(name: "fields", value: "user(emailAddress)")]
+        var req = URLRequest(url: comps.url!)
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: req)
+        try Self.assertOK(response: response, data: data)
+        struct Resp: Decodable {
+            struct User: Decodable { let emailAddress: String? }
+            let user: User?
+        }
+        return try JSONDecoder().decode(Resp.self, from: data).user?.emailAddress
+    }
+
     func exportAsHTML(docId: String) async throws -> String {
         let token = try await accessToken()
         var comps = URLComponents(string: "https://www.googleapis.com/drive/v3/files/\(docId)/export")!

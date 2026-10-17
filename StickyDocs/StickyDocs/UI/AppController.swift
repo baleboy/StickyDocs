@@ -13,11 +13,19 @@ final class AppController: ObservableObject {
     let engine: SyncEngine
     private(set) var isTerminating = false
     private var windowControllers: [String: StickyWindowController] = [:]
-    private var allStickiesWindow: NSWindow?
+    private var allStickiesWindow: AllStickiesWindowController?
     // Sticky ids currently being pulled from Drive. UI observes this to show
     // a spinner in place of the status dot.
     @Published private(set) var syncingStickyIds: Set<String> = []
     @Published private(set) var isOnboardingComplete: Bool = false
+    // True while Sync Now (or the launch-time pull) is running.
+    @Published private(set) var isSyncingAll = false
+    // When the last Sync Now pass finished while signed in. In memory only;
+    // the launcher also falls back to the newest per-sticky lastSyncedAt.
+    @Published private(set) var lastSyncCompletedAt: Date?
+    // The signed-in Google account, for the launcher's status line. Cached
+    // in app_state, so it's cleared with everything else on sign-out.
+    @Published private(set) var accountEmail: String?
     // Set when discovery wants to open the All Stickies panel but onboarding
     // is still on screen (typically the folder-choice step right after
     // sign-in). markOnboardingComplete flushes this once onboarding closes.
@@ -85,6 +93,7 @@ final class AppController: ObservableObject {
         }
 
         self.isOnboardingComplete = (try? store.getAppState(key: OnboardingKeys.complete)) == "1"
+        self.accountEmail = try? store.getAppState(key: Self.accountEmailKey)
 
         // Trigger a sync whenever auth transitions from signed-out to signed-in,
         // so edits made while logged out are pushed (and remote changes pulled)
@@ -98,6 +107,7 @@ final class AppController: ObservableObject {
                 guard signedIn else { return }
                 Task { @MainActor in
                     guard let self else { return }
+                    Task { await self.refreshAccountEmail(force: true) }
                     // If onboarding is still on screen, skip the auto-sync —
                     // syncNow() touches ensureStickiesFolder, which would race
                     // with completeOnboarding() and auto-create a "Stickies"
@@ -112,6 +122,22 @@ final class AppController: ObservableObject {
 
         startNetworkMonitor()
         registerKeepOnTopHotKey()
+        Task { await refreshAccountEmail(force: false) }
+    }
+
+    private static let accountEmailKey = "account_email"
+
+    // Fetches the account email when signed in. Without `force`, only when
+    // none is cached yet (e.g. accounts signed in before this was added).
+    func refreshAccountEmail(force: Bool) async {
+        guard AuthService.shared.isSignedIn, force || accountEmail == nil else { return }
+        do {
+            guard let email = try await driveClient.fetchUserEmail(), AuthService.shared.isSignedIn else { return }
+            try? store.setAppState(key: Self.accountEmailKey, value: email)
+            accountEmail = email
+        } catch {
+            NSLog("[StickyDocs] fetching account email failed: \(error)")
+        }
     }
 
     // MARK: - Keep on top
@@ -196,6 +222,8 @@ final class AppController: ObservableObject {
         await syncNow()
     }
 
+    var hasOpenStickyWindows: Bool { !windowControllers.isEmpty }
+
     func newSticky() throws -> Sticky {
         let sticky = try engine.createLocalSticky()
         showWindow(for: sticky)
@@ -253,6 +281,9 @@ final class AppController: ObservableObject {
     // in the app. No-op when signed out.
     func pullAllFromDrive() async {
         guard AuthService.shared.isSignedIn else { return }
+        let ownsIndicator = !isSyncingAll
+        if ownsIndicator { isSyncingAll = true }
+        defer { if ownsIndicator && syncNowTask == nil { isSyncingAll = false } }
         let all = (try? store.allActive()) ?? []
         let provisioned = all.filter { $0.googleDocId != nil }
         NSLog("[StickyDocs] pullAllFromDrive: \(provisioned.count) sticky/stickies")
@@ -287,6 +318,7 @@ final class AppController: ObservableObject {
             await running.value
             return
         }
+        isSyncingAll = true
         let task = Task { @MainActor in
             repeat {
                 self.syncNowRerunRequested = false
@@ -295,6 +327,8 @@ final class AppController: ObservableObject {
             // Cleared here, in the same main-actor turn as the final rerun
             // check, so no caller can join a task that has already finished.
             self.syncNowTask = nil
+            self.isSyncingAll = false
+            if AuthService.shared.isSignedIn { self.lastSyncCompletedAt = Date() }
         }
         syncNowTask = task
         await task.value
@@ -330,26 +364,52 @@ final class AppController: ObservableObject {
         await syncAllPending()
     }
 
+    // Never shown over (or before) onboarding: the request is deferred and
+    // flushed by markOnboardingComplete.
     func showAllStickiesPanel() {
+        guard isOnboardingComplete, !onboarding.isShowing else {
+            pendingShowAllStickies = true
+            return
+        }
         if allStickiesWindow == nil {
-            let hosting = NSHostingController(rootView: AllStickiesView(store: store) { [weak self] sticky in
-                self?.showWindow(for: sticky)
-            } onNewSticky: { [weak self] in
-                _ = try? self?.newSticky()
-            })
-            let window = NSWindow(contentViewController: hosting)
-            window.title = "All Stickies"
-            window.setContentSize(NSSize(width: 360, height: 480))
-            window.styleMask = [.titled, .closable, .resizable]
-            window.isReleasedWhenClosed = false
-            window.center()
-            allStickiesWindow = window
+            allStickiesWindow = AllStickiesWindowController(store: store)
         }
         // Equivalent to a dock-icon click: brings the app to the foreground
         // and orders all its windows forward. Plain NSApp.activate is flaky
         // from a MenuBarExtra action context.
         NSRunningApplication.current.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
-        allStickiesWindow?.makeKeyAndOrderFront(nil)
+        allStickiesWindow?.present()
+    }
+
+    func closeAllStickiesPanel() {
+        allStickiesWindow?.close()
+    }
+
+    // Launch: the launcher stands in for "nothing on screen" when no sticky
+    // windows were restored.
+    func showAllStickiesIfNothingOpen() {
+        guard isOnboardingComplete, !hasOpenStickyWindows else { return }
+        showAllStickiesPanel()
+    }
+
+    // Delete from the launcher. An open sticky goes through its window's own
+    // confirmation; a closed one gets the same dialog here.
+    func requestDelete(stickyId: String) {
+        if let controller = windowControllers[stickyId] {
+            controller.requestDelete()
+            return
+        }
+        guard let sticky = try? store.fetch(id: stickyId),
+              let alsoDeleteDoc = StickyWindowController.confirmDeletion(hasDoc: sticky.googleDocId != nil)
+        else { return }
+        let engine = engine
+        Task { @MainActor in
+            do {
+                try await engine.deleteSticky(id: stickyId, alsoDeleteDoc: alsoDeleteDoc)
+            } catch {
+                NSLog("[StickyDocs] deleteSticky failed for \(stickyId): \(error)")
+            }
+        }
     }
 
     func resetAllLocalData() {
@@ -403,6 +463,8 @@ final class AppController: ObservableObject {
         try? store.wipeAll()
         folderIdCache.invalidate()
         isOnboardingComplete = false
+        accountEmail = nil
+        lastSyncCompletedAt = nil
     }
 
     func markOnboardingComplete() {

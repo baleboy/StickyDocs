@@ -87,21 +87,8 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
             return
         }
 
-        let alert = NSAlert()
-        alert.messageText = "Delete this sticky?"
-        alert.informativeText = "The sticky will be removed permanently. By default the underlying Google Doc is kept in Drive."
-        alert.addButton(withTitle: "Delete")
-        alert.addButton(withTitle: "Cancel")
-
         let hasDoc = (try? engine.store.fetch(id: stickyId))?.googleDocId != nil
-        let checkbox = NSButton(checkboxWithTitle: "Also delete the Google Doc in Drive", target: nil, action: nil)
-        checkbox.state = .off
-        checkbox.isEnabled = hasDoc
-        alert.accessoryView = checkbox
-
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-
-        let alsoDeleteDoc = hasDoc && checkbox.state == .on
+        guard let alsoDeleteDoc = Self.confirmDeletion(hasDoc: hasDoc) else { return }
         confirmedDelete = true
         let id = stickyId
         let engine = engine
@@ -113,6 +100,24 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
             }
             window.close()
         }
+    }
+
+    // The delete confirmation, shared with the All Stickies launcher. nil if
+    // cancelled, otherwise whether to also delete the Google Doc.
+    static func confirmDeletion(hasDoc: Bool) -> Bool? {
+        let alert = NSAlert()
+        alert.messageText = "Delete this sticky?"
+        alert.informativeText = "The sticky will be removed permanently. By default the underlying Google Doc is kept in Drive."
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+
+        let checkbox = NSButton(checkboxWithTitle: "Also delete the Google Doc in Drive", target: nil, action: nil)
+        checkbox.state = .off
+        checkbox.isEnabled = hasDoc
+        alert.accessoryView = checkbox
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        return hasDoc && checkbox.state == .on
     }
 
     func windowWillClose(_ notification: Notification) {

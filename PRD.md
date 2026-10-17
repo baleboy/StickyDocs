@@ -84,7 +84,8 @@ The sticky is the foreground frontend; the Doc is the durable, shareable, cross-
 ### Editor & Rich Text
 - `NSTextView` editing an `NSAttributedString`.
 - v1 feature set: bold, italic, underline, bulleted list, numbered list. No headings, no images, no tables, no text color, no font selector.
-- No toolbar. Formatting via Format menu and keyboard shortcuts (`⌘B`, `⌘I`, `⌘U`, list shortcuts).
+- No toolbar. Formatting via Format menu and keyboard shortcuts (`⌘B`, `⌘I`, `⌘U`), plus Markdown-style list shortcuts (`- `, `* `, `1. `, `1) ` at the start of a line).
+- **Beyond v1 — links.** URLs (`http(s)://…`, `www.…`) and email addresses are auto-detected as you type or paste and sync both ways with Google Docs as real links. Only `http`, `https` and `mailto` links are kept. Link text never carries underline formatting: Docs' export underlines every link, so an explicit underline on link text can't be told apart and is dropped. No manual link editing (⌘K).
 - Spellcheck, services menu, emoji picker, dictation: rely on `NSTextView` defaults.
 
 ### Local Storage
@@ -139,7 +140,7 @@ stickies(
 ### Surface Beyond Stickies
 - Standard app menu bar (File/Edit/Format/Window/Help).
 - Menu bar extra (status icon) with: New Sticky, Show All Stickies, Sync Now, Open Stickies Folder in Drive, Preferences, Sign Out.
-- "All Stickies" panel: floating window with a `List` view bound to a GRDB query, showing title, preview, color swatch, and sync status per row.
+- "All Stickies" launcher: an Xcode-style welcome window — app, version, account and sync status with New Sticky / Sync Now / Open Folder (or Sign In) on the left; every sticky (live GRDB query: tile in the sticky's color, title, preview, date, sync status) on the right. Shown on demand, from the Dock, after cross-machine discovery, and at launch when no sticky windows were restored.
 - Preferences window: signed-in account, default color, sync interval, folder name, sync log viewer.
 - Right-click context menu on each sticky: color picker, delete, sync now, open in Google Docs (browser), copy Doc link.
 - Onboarding: one-screen welcome → OAuth consent → folder bootstrap → welcome sticky.

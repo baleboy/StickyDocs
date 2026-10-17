@@ -49,6 +49,7 @@ The onboarding gate is `onboarding_complete` in the DB's `app_state` table (`App
 ## 2. Sticky creation
 
 - [ ] **New from menu bar.** ⇧⌘N (or "New Sticky" menu item). A yellow borderless window appears instantly — no network delay.
+- [ ] **Launch with no open stickies shows All Stickies.** Onboarding complete, at least one sticky exists but all are hidden (✕). Quit and relaunch → the All Stickies launcher appears centered. With at least one sticky window restored, it does not appear.
 - [ ] **Launch with no stickies auto-creates one.** Onboarding already complete. Delete every sticky (trash icon on each, plus All Stickies for any hidden ones) so the store is empty. Quit (⌘Q) and relaunch. A single blank sticky appears on screen. (Skipped during first-run onboarding: a fresh install that hasn't completed onboarding does NOT auto-spawn a sticky.)
 - [ ] **No Doc yet.** Open Drive → Stickies/ folder. The newly-created empty sticky does **not** appear there.
 - [ ] **First push provisions Doc.** Type "Hello world" in the sticky. Click another app (window blurs). Wait a moment, then refresh Drive Stickies folder: a Doc titled "Hello world" appears.
@@ -80,6 +81,23 @@ The onboarding gate is `onboarding_complete` in the DB's `app_state` table (`App
 - [ ] **Italic (⌘I).** Same as bold.
 - [ ] **Underline (⌘U).** Same as bold.
 - [ ] **Format menu.** App menu bar → Format → Bold/Italic/Underline work the same as shortcuts.
+- [ ] **Format → Bulleted List / Numbered List.** Select one or more paragraphs → the item turns them into list items; choosing it again on an all-list selection turns them back into plain paragraphs.
+- [ ] **List shortcut `- ` / `* `.** On an empty line, type `- ` → the line becomes a bullet and the `-` disappears. Same with `* `.
+- [ ] **List shortcut `1. ` / `1) `.** On an empty line, type `1. ` → a numbered item. Same with `1) `. Return continues the list (2, 3…).
+- [ ] **Shortcut only at start of line.** Typing `a - b`, `see 1. above`, `2. two` or `10. ten` leaves plain text. Typing `- ` inside an existing list item doesn't nest or convert.
+- [ ] **Pasted markers stay text.** Paste a line beginning with `- ` → it stays plain text.
+- [ ] **Undo the shortcut.** Type `- ` then ⌘Z immediately → the literal `- ` comes back as plain text (one undo step).
+- [ ] **Return on an empty item ends the list.** In a list, press Return twice → the list ends and the new line is plain text.
+- [ ] **Backspace removes the bullet.** Cursor at the start of a list item's text, Backspace → the bullet/number is gone, the text stays as a plain paragraph.
+- [ ] **Shortcut lists sync like menu lists.** A list made with `- ` shows as a normal bulleted list in the Doc after blur, and the sticky goes pending (orange dot) right after the conversion.
+- [ ] **Typed URL becomes a link.** Type `https://example.com` then a space (or Return / punctuation) → it turns blue and underlined. Same for `www.apple.com` (links to `https://www.apple.com/`) and `me@example.com` (a `mailto:` link). A bare `example.com` or `notes.txt` stays plain.
+- [ ] **Trailing punctuation excluded.** Type `See https://example.com.` and `(https://example.com)` → the period and the closing paren aren't part of the link.
+- [ ] **Pasted URL becomes a link.** Paste `visit https://example.org/x now` → only the URL is linked.
+- [ ] **Undo detection.** Type a URL and a space, then ⌘Z → the link is removed, the text stays.
+- [ ] **Clicking a link.** Hover a link → pointing-hand cursor. Click → opens in the default browser (`mailto:` opens the mail client).
+- [ ] **Typing after a link.** Put the cursor right after a link and type → the new text is not part of the link. Select part of a URL link's text and retype it (e.g. `com` → `org`) → the link target follows the visible text; edit it into a non-URL and the link goes away.
+- [ ] **Link context menu.** Right-click a link → **Open Link**, **Copy Link**, **Remove Link** at the top of the menu (no duplicates). Remove Link keeps the text and marks the sticky pending.
+- [ ] **Existing stickies aren't rescanned.** A sticky that already contained a plain-text URL before upgrading still shows it as plain text after relaunch, and nothing pushes on launch because of it.
 - [ ] **Undo (⌘Z).** Type, then undo. Text reverts.
 - [ ] **Emoji (⌃⌘Space).** System emoji picker works inside the sticky.
 
@@ -99,6 +117,9 @@ The onboarding gate is `onboarding_complete` in the DB's `app_state` table (`App
 - [ ] **Pull after remote edit.** Open the Doc in browser. Edit content (add a paragraph). Save. Back in app, trigger pull either by relaunching the app or by clicking Sync Now in the menu bar. Sticky updates to show the remote content. *Pull-on-focus per-sticky is deferred to v2.*
 - [ ] **Remote edit while typing applies immediately.** With a synced sticky focused and its Doc open in a browser, add a word in the browser. Back in the sticky, click into the text and turn wifi off and on (reconnect triggers Sync Now) without clicking away. The sticky's text updates in place to include the remote word. Typing afterwards keeps it; it isn't reverted to the pre-pull text.
 - [ ] **Round-trip fidelity.** Type in sticky: bold, italic, underline, bulleted list, numbered list. Blur. Open the Doc in browser — formatting renders correctly. Quit and relaunch the app — sticky reappears with formatting intact locally.
+- [ ] **Link: sticky → Doc.** Type a URL (and a bold one, via ⌘B over link text) in a sticky. Blur. In the Doc, both are working blue links; the bold one is still bold.
+- [ ] **Link: Doc → sticky.** In the Doc, add a link via Insert link (on "click here") and one by auto-linking a typed URL. Sync Now → both are clickable in the sticky, pointing at the real target (not a `google.com/url?q=` redirect), and aren't shown as `<u>`-underlined text after the next push. Edit the sticky and blur → the links are still in the Doc.
+- [ ] **Link without formatting stays clean.** After the link round trip, ⌘U-underlined text elsewhere in the sticky is still underlined and link text isn't; nothing shows as a conflict.
 
 ## 7. Conflict (manual provocation)
 
@@ -124,14 +145,23 @@ The onboarding gate is `onboarding_complete` in the DB's `app_state` table (`App
 - [ ] **Sync now.** Right-click → "Sync now". Pending push (if any) drains.
 - [ ] **Delete sticky.** Right-click → "Delete sticky". Same confirmation dialog as the trash icon. Click Delete: window closes, sticky disappears from All Stickies. Doc handling honors the checkbox.
 
-## 10. All Stickies panel
+## 10. All Stickies launcher
 
-- [ ] **Open from menu bar.** Menu bar → Show All Stickies. Panel opens.
-- [ ] **Live update.** Open panel side-by-side with a sticky. Type in the sticky — preview text in panel row updates within ~1 second.
-- [ ] **Most-recently-updated first.** Rows are ordered newest-edit first. With the panel open next to a sticky that is *not* currently at the top, type into that sticky — its row moves to the top of the list within ~1 second.
-- [ ] **Click to focus.** Click a row → that sticky's window comes to the front (or opens if it was closed).
-- [ ] **Color swatch matches.** Each row's swatch matches the sticky's color.
-- [ ] **Sync status dot.** Stickies with pending changes show a small orange dot in the row. Synced stickies show no dot.
+- [ ] **Open from menu bar.** Menu bar → Show All Stickies. A fixed-size (about 800×480), borderless, rounded window opens centered and key, with an ✕ button top-left and no traffic lights. It can be dragged by its background and can't be resized.
+- [ ] **Other triggers.** Clicking the Dock icon with no visible windows opens it. On a fresh install, Drive discovery importing stickies opens it once onboarding has finished — never on top of (or before) onboarding.
+- [ ] **Left pane.** App icon, "StickyDocs", "Version <x>" matching About. Status line: signed in → green dot, `<account email> · Synced <relative time>`; during Sync Now → `Syncing…`; signed out → gray dot, `Not signed in`.
+- [ ] **Buttons.** Signed in: New Sticky (⇧⌘N), Sync Now, Open Stickies Folder in Drive. Signed out: Sign In with Google… first, then New Sticky. Buttons highlight on hover.
+- [ ] **Sync Now.** Click → the icon spins, the status says `Syncing…`, and the button can't be clicked again until it finishes. The launcher stays open; afterwards the status says `Synced just now`.
+- [ ] **New Sticky / Open close it.** New Sticky creates a sticky and closes the launcher. Opening a row closes it too.
+- [ ] **Rows.** Each row has a sticky-colored tile, a bold title (first line if untitled, else "(Untitled)"), a one-line preview and a date. Newest-edited first.
+- [ ] **Dates.** Today → `2 min ago` / `1 hr ago`; then `Yesterday`; the weekday within the last week; then a short date (with the year if it isn't this year).
+- [ ] **Sync status dot.** Only unsynced stickies show the dot (orange pending, red error/unlinked) next to the title; hover shows the usual tooltip.
+- [ ] **Keyboard.** The first row is selected on open (accent highlight). ↑/↓ move the selection (the list scrolls to follow). Return opens the selected sticky and closes the launcher. Esc closes it.
+- [ ] **Double-click.** Double-click a row → opens the sticky (brought to front if already open) and the launcher closes. A single click only selects.
+- [ ] **Context menu.** Right-click a row → Open, Open in Google Docs, Copy Doc link, Delete…. The Docs items are disabled for a sticky without a Doc. Delete… shows the usual confirmation (with the "Also delete the Google Doc" checkbox) for open and closed stickies alike.
+- [ ] **Live update.** With the launcher open, Sync Now imports a sticky made on another Mac (or edit a sticky via ⇧⌘N + typing from another window) → the list updates without reopening.
+- [ ] **Empty state.** With no stickies, the right pane says "No stickies yet" / "Press ⇧⌘N to create one".
+- [ ] **Light and dark mode.** Switch appearance with the launcher open → both panes follow; the right pane stays slightly darker than the left.
 
 ## 11. Menu bar extra
 

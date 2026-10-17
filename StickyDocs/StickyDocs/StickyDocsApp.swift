@@ -51,6 +51,13 @@ struct StickyDocsApp: App {
                     NSApp.sendAction(Selector(("toggleUnderline:")), to: nil, from: nil)
                 }
                 .keyboardShortcut("u", modifiers: .command)
+                Divider()
+                Button("Bulleted List") {
+                    NSApp.sendAction(#selector(StickyNSTextView.toggleBulletList(_:)), to: nil, from: nil)
+                }
+                Button("Numbered List") {
+                    NSApp.sendAction(#selector(StickyNSTextView.toggleNumberedList(_:)), to: nil, from: nil)
+                }
             }
         }
     }
@@ -101,6 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AppController.shared.presentOnboardingIfNeeded()
             try? AppController.shared.restoreOpenStickies()
             try? AppController.shared.createInitialStickyIfNeeded()
+            AppController.shared.showAllStickiesIfNothingOpen()
             await AppController.shared.pullAllFromDrive()
             // Edits left pending by the last session (quit mid-debounce,
             // offline, push failure) — including stickies whose windows are
