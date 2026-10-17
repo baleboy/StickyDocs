@@ -104,5 +104,14 @@
             <sparkle:channel>alpha</sparkle:channel>
             <enclosure url="https://github.com/baleboy/StickyDocs/releases/download/v1.2.0-alpha.9/StickyDocs-1.2.0-alpha.9-macOS.zip" sparkle:edSignature="bYqZQsLnUKTky3D2YYWo1j45ZM10ootQ47fb3l9LQRmPvTRqC5ufU85tBib1BRR77QbJCtUrxmvPQWjUacHsDw==" length="4757785" type="application/octet-stream"/>
         </item>
+            <item>
+            <title>Version 1.2.0-alpha.10</title>
+            <pubDate>Sat, 17 Oct 2026 17:02:57 +0000</pubDate>
+            <sparkle:version>33</sparkle:version>
+            <sparkle:shortVersionString>1.2.0-alpha.10</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.6</sparkle:minimumSystemVersion>
+            <sparkle:channel>alpha</sparkle:channel>
+            <enclosure url="https://github.com/baleboy/StickyDocs/releases/download/v1.2.0-alpha.10/StickyDocs-1.2.0-alpha.10-macOS.zip" sparkle:edSignature="hBtHSNsu3t8WQ75xsOe/aFt3xivOKfWlCOtG85Pd4uA7aZnF6HEeGbkjHqWqZ+zQkzKLL0mVGXM2AkWuM/HpDQ==" length="4799725" type="application/octet-stream"/>
+        </item>
     </channel>
 </rss>
