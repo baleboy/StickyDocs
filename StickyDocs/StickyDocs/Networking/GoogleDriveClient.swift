@@ -152,6 +152,59 @@ struct GoogleDriveClient {
         return try JSONDecoder().decode(Resp.self, from: data).user?.emailAddress
     }
 
+    // Where the changes feed starts now; listChanges resumes from here.
+    func fetchStartPageToken() async throws -> String {
+        let token = try await accessToken()
+        var req = URLRequest(url: URL(string: "https://www.googleapis.com/drive/v3/changes/startPageToken")!)
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: req)
+        try Self.assertOK(response: response, data: data)
+        struct Resp: Decodable { let startPageToken: String }
+        return try JSONDecoder().decode(Resp.self, from: data).startPageToken
+    }
+
+    // One page of changes since `pageToken`. Under drive.file this only
+    // covers files this OAuth client can see, i.e. the stickies.
+    func listChanges(pageToken: String) async throws -> SyncEngine.ChangesPage {
+        let token = try await accessToken()
+        var comps = URLComponents(string: "https://www.googleapis.com/drive/v3/changes")!
+        comps.queryItems = [
+            .init(name: "pageToken", value: pageToken),
+            .init(name: "spaces", value: "drive"),
+            .init(name: "pageSize", value: "100"),
+            .init(name: "fields", value: "nextPageToken,newStartPageToken,changes(fileId,removed,file(appProperties))")
+        ]
+        var req = URLRequest(url: comps.url!)
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await URLSession.shared.data(for: req)
+        try Self.assertOK(response: response, data: data)
+        struct Resp: Decodable {
+            struct Change: Decodable {
+                struct File: Decodable { let appProperties: [String: String]? }
+                let fileId: String?
+                let removed: Bool?
+                let file: File?
+            }
+            let changes: [Change]
+            let nextPageToken: String?
+            let newStartPageToken: String?
+        }
+        let resp = try JSONDecoder().decode(Resp.self, from: data)
+        return SyncEngine.ChangesPage(
+            changes: resp.changes.compactMap { change in
+                // Shared-drive changes have no fileId.
+                guard let fileId = change.fileId else { return nil }
+                return SyncEngine.RemoteChange(
+                    fileId: fileId,
+                    removed: change.removed ?? false,
+                    isTaggedSticky: change.file?.appProperties?["stickydocs"] == "v1"
+                )
+            },
+            nextPageToken: resp.nextPageToken,
+            newStartPageToken: resp.newStartPageToken
+        )
+    }
+
     func exportAsHTML(docId: String) async throws -> String {
         let token = try await accessToken()
         var comps = URLComponents(string: "https://www.googleapis.com/drive/v3/files/\(docId)/export")!

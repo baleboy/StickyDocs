@@ -43,6 +43,15 @@ final class AppController: ObservableObject {
     // running sync and request one more pass so their trigger isn't lost.
     private var syncNowTask: Task<Void, Never>?
     private var syncNowRerunRequested = false
+    // Background polling of the Drive changes feed (see pollRemoteChanges).
+    private var pollTimer: Timer?
+    private var isPolling = false
+    private var lastPollStartedAt: Date?
+    private var lastFocusPullAt: [String: Date] = [:]
+    static let pollInterval: TimeInterval = 60
+    // Coming to the foreground or focusing a sticky checks for remote edits,
+    // but not more often than this; clicking around shouldn't hammer Drive.
+    static let eventCheckMinInterval: TimeInterval = 15
 
     private init() {
         do {
@@ -80,7 +89,9 @@ final class AppController: ObservableObject {
                         createdTime: $0.createdDate
                     )
                 }
-            }
+            },
+            fetchStartPageToken: { try await driveClient.fetchStartPageToken() },
+            listChanges: { try await driveClient.listChanges(pageToken: $0) }
         )
         self.engine = SyncEngine(store: store, deps: deps)
 
@@ -121,6 +132,7 @@ final class AppController: ObservableObject {
             }
 
         startNetworkMonitor()
+        startRemoteChangePolling()
         registerKeepOnTopHotKey()
         Task { await refreshAccountEmail(force: false) }
     }
@@ -189,6 +201,75 @@ final class AppController: ObservableObject {
             }
         }
         pathMonitor.start(queue: DispatchQueue.global(qos: .utility))
+    }
+
+    // MARK: - Remote changes
+
+    // Remote edits (phone, browser, another Mac) surface without Sync Now:
+    // the changes feed is polled every pollInterval and whenever the app
+    // comes to the foreground, and a sticky gets its own revision check when
+    // its window becomes key (pullOnFocus). The feed can lag behind Docs
+    // edits; the focus check doesn't.
+    private func startRemoteChangePolling() {
+        let timer = Timer(timeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in await self?.pollRemoteChanges() }
+        }
+        timer.tolerance = 10
+        RunLoop.main.add(timer, forMode: .common)
+        pollTimer = timer
+
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if let last = self.lastPollStartedAt,
+                   Date().timeIntervalSince(last) < Self.eventCheckMinInterval { return }
+                await self.pollRemoteChanges()
+            }
+        }
+    }
+
+    private var canCheckRemote: Bool {
+        AuthService.shared.isSignedIn && isOnboardingComplete && lastPathStatus != .unsatisfied
+    }
+
+    func pollRemoteChanges() async {
+        // Sync Now already pulls everything; a poll would just duplicate it.
+        guard canCheckRemote, !isPolling, syncNowTask == nil else { return }
+        isPolling = true
+        lastPollStartedAt = Date()
+        defer { isPolling = false }
+        do {
+            let result = try await engine.pollRemoteChanges()
+            let changed = result.pulled.filter { $0.value != .unchanged }
+            if !changed.isEmpty || result.imported > 0 {
+                NSLog("[StickyDocs] poll: \(changed.count) sticky/stickies updated, \(result.imported) imported")
+            }
+        } catch {
+            NSLog("[StickyDocs] poll FAILED: \(error)")
+        }
+    }
+
+    // Called when a sticky window becomes key: one revision check for that
+    // sticky, so the text is current before the user types over it.
+    func pullOnFocus(stickyId: String) {
+        guard canCheckRemote,
+              (try? store.fetch(id: stickyId))?.googleDocId != nil else { return }
+        if let last = lastFocusPullAt[stickyId],
+           Date().timeIntervalSince(last) < Self.eventCheckMinInterval { return }
+        lastFocusPullAt[stickyId] = Date()
+        let engine = engine
+        Task { @MainActor in
+            do {
+                let outcome = try await engine.pull(stickyId: stickyId)
+                if outcome != .unchanged { NSLog("[StickyDocs] focus pull \(outcome) for sticky \(stickyId)") }
+            } catch {
+                NSLog("[StickyDocs] focus pull FAILED for sticky \(stickyId): \(error)")
+            }
+        }
     }
 
     // MARK: - Onboarding
@@ -490,6 +571,8 @@ final class AppController: ObservableObject {
         isOnboardingComplete = false
         accountEmail = nil
         lastSyncCompletedAt = nil
+        lastPollStartedAt = nil
+        lastFocusPullAt.removeAll()
     }
 
     func markOnboardingComplete() {

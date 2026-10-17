@@ -138,8 +138,14 @@ The tour is recorded per Mac in UserDefaults (`FeatureTour.seenVersion`), not in
 
 ## 6. Sync — pull
 
-- [ ] **Pull after remote edit.** Open the Doc in browser. Edit content (add a paragraph). Save. Back in app, trigger pull either by relaunching the app or by clicking Sync Now in the menu bar. Sticky updates to show the remote content. *Pull-on-focus per-sticky is deferred to v2.*
-- [ ] **Remote edit while typing applies immediately.** With a synced sticky focused and its Doc open in a browser, add a word in the browser. Back in the sticky, click into the text and turn wifi off and on (reconnect triggers Sync Now) without clicking away. The sticky's text updates in place to include the remote word. Typing afterwards keeps it; it isn't reverted to the pre-pull text.
+- [ ] **Pull after remote edit.** Open the Doc in browser. Edit content (add a paragraph). Back in app, click Sync Now in the menu bar (or relaunch). Sticky updates to show the remote content.
+- [ ] **Background poll, no user action.** Leave a synced sticky open on screen, unfocused, and don't touch the Mac. Edit its Doc from your phone or another computer. Within about a minute or two (the poll runs every 60s; Drive's changes feed can lag a Docs edit a little), the sticky shows the remote text without clicking anything. Console logs `poll: 1 sticky/stickies updated`.
+- [ ] **Poll is quiet when nothing changed.** With no remote edits, Console shows no `poll:` lines and stickies don't flicker or lose the cursor.
+- [ ] **Pull on focus.** Edit a sticky's Doc in the browser, then click into that sticky. Its text updates to the remote version within a second, before you type. Clicking in and out repeatedly doesn't re-check more than once every 15s per sticky.
+- [ ] **Pull on foreground.** Switch to another app, edit a Doc remotely, then click the StickyDocs menu bar icon or any sticky. The changed sticky updates (the foreground check runs the changes poll, at most once every 15s).
+- [ ] **New sticky from another Mac appears.** On a second Mac signed into the same account, create a sticky and type in it. Within a minute or two it appears in All Stickies on the first Mac (closed), without Sync Now.
+- [ ] **No polling when it can't work.** Signed out, offline, or with onboarding not finished: Console shows no `poll` activity. After signing out and back in (even with a different account), the first poll just records a fresh starting point and pulls nothing.
+- [ ] **Remote edit while typing applies immediately.** With a synced sticky focused and its Doc open on another device, add a word there. Keep the sticky focused, without typing, until the poll brings the word in (or turn wifi off and on, which triggers Sync Now). The sticky's text updates in place to include the remote word. Typing afterwards keeps it; it isn't reverted to the pre-pull text.
 - [ ] **Round-trip fidelity.** Type in sticky: bold, italic, underline, bulleted list, numbered list. Blur. Open the Doc in browser — formatting renders correctly. Quit and relaunch the app — sticky reappears with formatting intact locally.
 - [ ] **Link: sticky → Doc.** Type a URL (and a bold one, via ⌘B over link text) in a sticky. Blur. In the Doc, both are working blue links; the bold one is still bold.
 - [ ] **Link: Doc → sticky.** In the Doc, add a link via Insert link (on "click here") and one by auto-linking a typed URL. Sync Now → both are clickable in the sticky, pointing at the real target (not a `google.com/url?q=` redirect), and aren't shown as `<u>`-underlined text after the next push. Edit the sticky and blur → the links are still in the Doc.
@@ -147,8 +153,8 @@ The tour is recorded per Mac in UserDefaults (`FeatureTour.seenVersion`), not in
 
 ## 7. Conflict (manual provocation)
 
-- [ ] **Setup.** Sign in. Create sticky, type "local". Blur (syncs). Open Doc in browser, type "remote", save.
-- [ ] **Provoking the conflict.** Before triggering pull, also edit the sticky locally (e.g. append " edit") but do **not** blur — `pendingPush` must still be true with content diverged from `lastSyncedHTML`. Then trigger pull via Sync Now (or relaunch). Expected: remote wins; sticky shows the remote content; previous local edit is stashed in `conflict_backup_html`.
+- [ ] **Setup.** Sign in. Create sticky, type "local", wait for it to sync, and keep it focused. Open the Doc on another device (phone, or a browser on another computer, so the sticky doesn't lose focus and the click back in doesn't trigger a focus pull).
+- [ ] **Provoking the conflict.** Type "remote" in the Doc, then straight away (within a few seconds, before the next background poll) append " edit" in the sticky without blurring. The debounced push finds the Doc has moved and diverts to pull (or the poll gets there first). Expected: remote wins; sticky shows the remote content; previous local edit is stashed in `conflict_backup_html`.
 - [ ] **Conflict banner appears.** After the conflict resolves above, an **orange banner** between the title bar and the editor reads "Remote changes overwrote your unsynced edits." with **Restore mine** and **Discard** buttons. There is no × dismiss — the user must choose.
 - [ ] **Banner persists across relaunch.** Quit and relaunch with the conflict unresolved. The banner is still there (driven by `conflict_backup_html` in the DB).
 - [ ] **Restore mine.** Click **Restore mine** in the banner. Content reverts to the local edit; banner disappears; the Doc in Drive is **immediately** updated to match (Restore mine pushes right away — verify by refreshing the Doc in the browser).
@@ -257,7 +263,6 @@ Updates ship via [Sparkle](https://sparkle-project.org/). The appcast lives at h
 ## Known gaps (not bugs)
 
 - Explicit pull trigger isn't wired to UI yet (pull happens implicitly only).
-- No periodic Drive `changes.list` polling — remote changes only show on relaunch / focus / Sync Now.
 - Preferences window not built.
 - Dark mode color variants not tuned.
 - No conflict toast UI yet (the conflict badge in §7 is the only signal).

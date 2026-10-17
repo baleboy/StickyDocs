@@ -137,6 +137,7 @@ final class StickyWindowController: NSWindowController, NSWindowDelegate {
 
     func windowDidBecomeKey(_ notification: Notification) {
         viewModel.isKey = true
+        AppController.shared.pullOnFocus(stickyId: stickyId)
     }
 
     func windowDidResignKey(_ notification: Notification) {

@@ -11,7 +11,10 @@ import AppKit
 //     stash local into conflict_backup_html and accept remote
 //   - delete: soft-delete locally; optionally also trash the Doc
 //
-// Deferred (v2+): changes.list polling, exponential backoff.
+//   - pollRemoteChanges: read the Drive changes feed since a persisted page
+//     token and pull only the stickies whose Docs changed
+//
+// Deferred (v2+): exponential backoff.
 
 // Thrown by Dependencies.pushBody when the Doc changed in Drive since the
 // revision the engine last synced; the engine diverts to pull.
@@ -71,6 +74,29 @@ final class SyncEngine {
         // instead of collapsing to import order in the All Stickies list.
         // Default returns empty so unit tests don't need to mock discovery.
         var listTaggedStickies: () async throws -> [RemoteSticky] = { [] }
+        // Drive changes feed (changes.getStartPageToken / changes.list), for
+        // pollRemoteChanges. Defaults report no changes.
+        var fetchStartPageToken: () async throws -> String = { "" }
+        var listChanges: (_ pageToken: String) async throws -> ChangesPage = {
+            ChangesPage(changes: [], nextPageToken: nil, newStartPageToken: $0)
+        }
+    }
+
+    // One entry of the Drive changes feed. isTaggedSticky is whether the file
+    // carries appProperties.stickydocs=v1, i.e. may be a sticky created on
+    // another Mac.
+    struct RemoteChange {
+        let fileId: String
+        var removed: Bool = false
+        var isTaggedSticky: Bool = false
+    }
+
+    // A page of the changes feed. The last page has newStartPageToken (where
+    // the next poll resumes) instead of nextPageToken.
+    struct ChangesPage {
+        let changes: [RemoteChange]
+        let nextPageToken: String?
+        let newStartPageToken: String?
     }
 
     let store: StickyStore
@@ -518,6 +544,101 @@ final class SyncEngine {
         try store.upsert(sticky)
         postContentReplaced(stickyId: stickyId, html: canonicalRemote)
         return outcome
+    }
+
+    // MARK: - Changes feed
+
+    // app_state key for the changes-feed page token. Wiped with the rest of
+    // app_state on sign-out, so a new account starts a fresh feed.
+    nonisolated static let changesPageTokenKey = "changes_page_token"
+
+    struct PollResult: Equatable {
+        var pulled: [String: PullOutcome] = [:]   // stickyId -> outcome
+        var imported = 0
+    }
+
+    // Background poll: asks Drive what changed since the last poll and pulls
+    // only those stickies, so remote edits show up without user action. One
+    // cheap request when nothing changed, instead of a revision check per
+    // sticky. A Doc we don't know yet that carries our tag (created on
+    // another Mac) runs discovery. Our own pushes come back through the feed
+    // too; their pulls find the revision unchanged and do nothing.
+    //
+    // The first poll (no token yet) only records where the feed starts:
+    // launch and Sync Now already pulled everything. If Drive rejects the
+    // token (expired), we re-baseline and pull every sticky, since changes
+    // in between can't be recovered from the feed.
+    func pollRemoteChanges() async throws -> PollResult {
+        guard let token = try store.getAppState(key: Self.changesPageTokenKey), !token.isEmpty else {
+            try store.setAppState(key: Self.changesPageTokenKey, value: try await deps.fetchStartPageToken())
+            return PollResult()
+        }
+
+        var changes: [RemoteChange] = []
+        var pageToken = token
+        let newStartToken: String
+        do {
+            while true {
+                let page = try await deps.listChanges(pageToken)
+                changes += page.changes
+                if let next = page.nextPageToken {
+                    pageToken = next
+                } else {
+                    newStartToken = page.newStartPageToken ?? pageToken
+                    break
+                }
+            }
+        } catch let error as NSError where Self.isInvalidPageTokenError(error) {
+            try store.setAppState(key: Self.changesPageTokenKey, value: try await deps.fetchStartPageToken())
+            return try await pullAll()
+        }
+
+        var result = PollResult()
+        var failed = false
+        var sawUnknownSticky = false
+        var seen: Set<String> = []
+        for change in changes where !change.removed && seen.insert(change.fileId).inserted {
+            guard let sticky = try store.fetchByDocId(change.fileId) else {
+                if change.isTaggedSticky { sawUnknownSticky = true }
+                continue
+            }
+            guard !sticky.deletedLocally else { continue }
+            do {
+                result.pulled[sticky.id] = try await pull(stickyId: sticky.id)
+            } catch {
+                NSLog("[StickyDocs] poll: pull FAILED for sticky \(sticky.id): \(error)")
+                failed = true
+            }
+        }
+        if sawUnknownSticky {
+            do {
+                result.imported = try await discoverRemoteStickies()
+            } catch {
+                NSLog("[StickyDocs] poll: discovery FAILED: \(error)")
+                failed = true
+            }
+        }
+        // Keep the old token after a failure so the next poll sees the same
+        // changes again (pulls are idempotent) instead of dropping them.
+        if !failed {
+            try store.setAppState(key: Self.changesPageTokenKey, value: newStartToken)
+        }
+        return result
+    }
+
+    private func pullAll() async throws -> PollResult {
+        var result = PollResult()
+        for sticky in try store.allActive() where sticky.googleDocId != nil {
+            if let outcome = try? await pull(stickyId: sticky.id) {
+                result.pulled[sticky.id] = outcome
+            }
+        }
+        return result
+    }
+
+    // Drive answers an expired or unknown page token with a 4xx.
+    private static func isInvalidPageTokenError(_ error: NSError) -> Bool {
+        error.domain == "GoogleDrive" && [400, 404, 410].contains(error.code)
     }
 
     func restoreBackup(stickyId: String) throws {
