@@ -118,6 +118,9 @@ final class StickyNSTextView: NSTextView {
 
     override func insertTab(_ sender: Any?) {
         let start = selectedRange().location
+        // Tab accepts a previewed date shortcut, like an inline completion:
+        // the keyword expands and no tab is inserted.
+        if let hint = dateHint, start == NSMaxRange(hint.range), expandDateShortcutIfNeeded(endingAt: start) { return }
         insertingTrigger = true
         super.insertTab(sender)
         insertingTrigger = false
@@ -139,15 +142,7 @@ final class StickyNSTextView: NSTextView {
     // Replaces an "@today"-style keyword ending at `location` with its value,
     // as its own undo step, so ⌘Z right after brings back the keyword.
     private func expandDateShortcutIfNeeded(endingAt location: Int) -> Bool {
-        guard let storage = textStorage,
-              let token = DateShortcut.token(endingAt: location, in: storage.string as NSString),
-              let value = DateShortcut.expansion(for: token.keyword)
-        else { return false }
-        var linked = false
-        storage.enumerateAttribute(.link, in: token.range) { value, _, stop in
-            if value != nil { linked = true; stop.pointee = true }
-        }
-        guard !linked else { return false }
+        guard let (token, value) = dateShortcut(endingAt: location), let storage = textStorage else { return false }
         breakUndoCoalescing()
         // The trigger and the expansion arrive in the same event, so they'd
         // share one undo group; close it so ⌘Z undoes only the expansion.
@@ -167,6 +162,132 @@ final class StickyNSTextView: NSTextView {
         }
         breakUndoCoalescing()
         return true
+    }
+
+    // The shortcut ending at `location` that would expand, with its value:
+    // not inside a link and not dismissed with Esc.
+    private func dateShortcut(endingAt location: Int) -> (token: (range: NSRange, keyword: String), value: String)? {
+        guard let storage = textStorage,
+              let token = DateShortcut.token(endingAt: location, in: storage.string as NSString),
+              token.range != declinedDateShortcut,
+              let value = DateShortcut.expansion(for: token.keyword)
+        else { return nil }
+        var linked = false
+        storage.enumerateAttribute(.link, in: token.range) { value, _, stop in
+            if value != nil { linked = true; stop.pointee = true }
+        }
+        return linked ? nil : (token, value)
+    }
+
+    // While the cursor sits right after a shortcut that would expand, the
+    // keyword is tinted and its value previewed in grey after the cursor.
+    // Both are display-only (a temporary attribute and a label), so they
+    // never reach the text, undo or sync.
+    private(set) var dateHint: (range: NSRange, value: String)?
+    private lazy var dateHintLabel: NSTextField = {
+        let label = NSTextField(labelWithString: "")
+        label.textColor = NSColor.black.withAlphaComponent(0.4)
+        label.lineBreakMode = .byClipping
+        label.isHidden = true
+        addSubview(label)
+        return label
+    }()
+    var isDateHintPreviewVisible: Bool { dateHint != nil && !dateHintLabel.isHidden }
+
+    // A shortcut dismissed with Esc: it stays literal text until an edit
+    // touches it. Positions only, kept while the text view lives.
+    private var declinedDateShortcut: NSRange?
+    private var windowIsKey = true
+
+    private func updateDateHint() {
+        guard let layoutManager, let textContainer, let storage = textStorage else { return }
+        if dateHint != nil {
+            dateHint = nil
+            dateHintLabel.isHidden = true
+            // The whole text, since edits may have moved the old range.
+            layoutManager.removeTemporaryAttribute(.backgroundColor,
+                                                   forCharacterRange: NSRange(location: 0, length: storage.length))
+        }
+        let cursor = selectedRange()
+        let ns = storage.string as NSString
+        // Not when the keyword runs straight into a word ("@today|ok").
+        let wordFollows = cursor.location < ns.length
+            && Unicode.Scalar(ns.character(at: cursor.location)).map(CharacterSet.alphanumerics.contains) == true
+        guard windowIsKey, window?.firstResponder === self, cursor.length == 0, !wordFollows,
+              let (token, value) = dateShortcut(endingAt: cursor.location) else { return }
+        dateHint = (token.range, value)
+        layoutManager.addTemporaryAttribute(.backgroundColor, value: NSColor.black.withAlphaComponent(0.1),
+                                            forCharacterRange: token.range)
+        // The preview would cover any text after the cursor, so it only
+        // shows at the end of a line; the tint alone marks it elsewhere.
+        guard cursor.location == ns.length || ns.character(at: cursor.location) == 0x0A else { return }
+        let glyphs = layoutManager.glyphRange(forCharacterRange: token.range, actualCharacterRange: nil)
+        let rect = layoutManager.boundingRect(forGlyphRange: glyphs, in: textContainer)
+        let font = storage.attribute(.font, at: token.range.location, effectiveRange: nil) as? NSFont
+            ?? NSFont.systemFont(ofSize: 14)
+        dateHintLabel.font = font
+        dateHintLabel.stringValue = value
+        let size = dateHintLabel.fittingSize
+        let x = textContainerOrigin.x + rect.maxX + 4
+        let width = min(size.width, bounds.maxX - textContainerInset.width - x)
+        guard width >= 12 else { return }
+        dateHintLabel.frame = NSRect(x: x, y: textContainerOrigin.y + rect.maxY - size.height,
+                                     width: width, height: size.height)
+        dateHintLabel.isHidden = false
+    }
+
+    // Esc while a hint shows dismisses it: the keyword stays as typed, and
+    // the next space doesn't expand it. Otherwise Esc does what it always did.
+    override func cancelOperation(_ sender: Any?) {
+        guard let hint = dateHint else { return super.cancelOperation(sender) }
+        declinedDateShortcut = hint.range
+        updateDateHint()
+    }
+
+    // Keeps the dismissed shortcut's range in step with edits before it, and
+    // forgets it once an edit lands inside it.
+    private func adjustDeclinedDateShortcut(for edit: NSRange, replacement: String?) {
+        guard let declined = declinedDateShortcut else { return }
+        let delta = ((replacement ?? "") as NSString).length - edit.length
+        if NSMaxRange(edit) <= declined.location {
+            declinedDateShortcut = NSRange(location: declined.location + delta, length: declined.length)
+        } else if edit.location >= NSMaxRange(declined) {
+            return
+        } else {
+            declinedDateShortcut = nil
+        }
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        defer { updateDateHint() }
+        return super.becomeFirstResponder()
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        if resigned { updateDateHint() }
+        return resigned
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didBecomeKeyNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
+        guard let window else { return }
+        NotificationCenter.default.addObserver(self, selector: #selector(windowKeyChanged(_:)),
+                                               name: NSWindow.didBecomeKeyNotification, object: window)
+        NotificationCenter.default.addObserver(self, selector: #selector(windowKeyChanged(_:)),
+                                               name: NSWindow.didResignKeyNotification, object: window)
+    }
+
+    @objc private func windowKeyChanged(_ notification: Notification) {
+        windowIsKey = notification.name == NSWindow.didBecomeKeyNotification
+        updateDateHint()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        if dateHint != nil { updateDateHint() }  // rewrapped: move the preview
     }
 
     // Runs after the space is inserted, as its own undo step, so ⌘Z right
@@ -379,10 +500,12 @@ final class StickyNSTextView: NSTextView {
             linkEditCursor = nil
         }
         super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
+        updateDateHint()
     }
 
     override func shouldChangeText(in affectedCharRange: NSRange, replacementString: String?) -> Bool {
         guard super.shouldChangeText(in: affectedCharRange, replacementString: replacementString) else { return false }
+        adjustDeclinedDateShortcut(for: affectedCharRange, replacement: replacementString)
         linkUnderEdit = nil
         let continuing = linkEditCursor
         linkEditCursor = nil
@@ -427,6 +550,7 @@ final class StickyNSTextView: NSTextView {
             }
         }
         super.didChangeText()
+        updateDateHint()
     }
 
     // Whether a link's visible text is just its URL, as for detected links.

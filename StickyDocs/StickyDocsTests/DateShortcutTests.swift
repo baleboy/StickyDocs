@@ -104,7 +104,7 @@ struct DateShortcutTests {
         let tab = EditorHarness()
         tab.type("@week")
         tab.textView.insertTab(nil)
-        #expect(tab.textView.string == "\(week)\t")
+        #expect(tab.textView.string == "\(week)")
         let ret = EditorHarness()
         ret.type("@week\nnext")
         #expect(ret.html == "<p>\(week)</p><p>next</p>")
@@ -173,5 +173,128 @@ struct DateShortcutTests {
         let e = EditorHarness()
         e.type("@week https://example.com ")
         #expect(e.html == #"<p>\#(week) <a href="https://example.com/">https://example.com</a> </p>"#)
+    }
+}
+
+@MainActor
+struct DateShortcutHintTests {
+    private var today: String { DateShortcut.expansion(for: "today")! }
+
+    @Test func hintShowsOnlyForACompleteKeyword() {
+        let e = EditorHarness()
+        e.type("on @tod")
+        #expect(e.textView.dateHint == nil)
+        e.type("ay")
+        #expect(e.textView.dateHint?.range == NSRange(location: 3, length: 6))
+        #expect(e.textView.dateHint?.value == today)
+        #expect(e.textView.isDateHintPreviewVisible)
+        e.type("s")
+        #expect(e.textView.dateHint == nil)
+    }
+
+    @Test func hintGoesAwayOnExpansionAndCursorMove() {
+        let e = EditorHarness()
+        e.type("@today")
+        #expect(e.textView.dateHint != nil)
+        e.textView.setSelectedRange(NSRange(location: 2, length: 0))
+        #expect(e.textView.dateHint == nil)
+        e.textView.setSelectedRange(NSRange(location: 6, length: 0))
+        #expect(e.textView.dateHint != nil)
+        e.type(" ")
+        #expect(e.textView.dateHint == nil)
+    }
+
+    @Test func previewOnlyAtEndOfLine() {
+        let e = EditorHarness(html: "<p>due ok</p>")
+        e.textView.setSelectedRange(NSRange(location: 3, length: 0))
+        e.type(" @today")
+        #expect(e.textView.dateHint != nil)  // tinted
+        #expect(!e.textView.isDateHintPreviewVisible)
+    }
+
+    @Test func hintIsDisplayOnly() {
+        let e = EditorHarness()
+        e.type("@today")
+        #expect(e.html == "<p>@today</p>")
+    }
+
+    @Test func escapeKeepsKeywordLiteral() {
+        let e = EditorHarness()
+        e.type("on @today")
+        e.textView.cancelOperation(nil)
+        #expect(e.textView.dateHint == nil)
+        e.type(" later")
+        #expect(e.textView.string == "on @today later")
+    }
+
+    @Test func editingDismissedKeywordRearmsIt() {
+        let e = EditorHarness()
+        e.type("@today")
+        e.textView.cancelOperation(nil)
+        e.textView.deleteBackward(nil)
+        e.type("y")
+        #expect(e.textView.dateHint != nil)
+        e.type(" ")
+        #expect(e.textView.string == "\(today) ")
+    }
+
+    @Test func dismissalFollowsEditsBeforeIt() {
+        let e = EditorHarness()
+        e.type("x @today")
+        e.textView.cancelOperation(nil)
+        e.textView.setSelectedRange(NSRange(location: 0, length: 0))
+        e.type("more ")
+        e.textView.setSelectedRange(NSRange(location: (e.textView.string as NSString).length, length: 0))
+        #expect(e.textView.dateHint == nil)
+        e.type(" ")
+        #expect(e.textView.string == "more x @today ")
+    }
+
+    @Test func dismissalOnlyAppliesToThatKeyword() {
+        let e = EditorHarness()
+        e.type("@today")
+        e.textView.cancelOperation(nil)
+        e.type(" and @today ")
+        #expect(e.textView.string == "@today and \(today) ")
+    }
+
+    @Test func tabAcceptsWithoutInsertingTab() {
+        let e = EditorHarness()
+        e.type("on @today")
+        e.textView.insertTab(nil)
+        #expect(e.textView.string == "on \(today)")
+        #expect(e.textView.selectedRange() == NSRange(location: ("on \(today)" as NSString).length, length: 0))
+        e.undo()
+        #expect(e.textView.string == "on @today")
+    }
+
+    @Test func tabWithoutHintInsertsTab() {
+        let e = EditorHarness()
+        e.type("@today")
+        e.textView.cancelOperation(nil)
+        e.textView.insertTab(nil)
+        #expect(e.textView.string == "@today\t")
+        let plain = EditorHarness()
+        plain.type("a")
+        plain.textView.insertTab(nil)
+        #expect(plain.textView.string == "a\t")
+    }
+
+    @Test func tabAcceptsMidLine() {
+        let e = EditorHarness(html: "<p>due ok</p>")
+        e.textView.setSelectedRange(NSRange(location: 3, length: 0))
+        e.type(" @today")
+        e.textView.insertTab(nil)
+        #expect(e.html == "<p>due \(today) ok</p>")
+    }
+
+    @Test func noHintWhenAWordFollows() {
+        let e = EditorHarness(html: "<p>@todayok</p>")
+        e.textView.setSelectedRange(NSRange(location: 6, length: 0))
+        #expect(e.textView.dateHint == nil)
+        // Tab is then an ordinary trigger: the tab separates the keyword,
+        // which expands as with a space.
+        e.textView.insertTab(nil)
+        #expect(e.textView.string.hasPrefix("\(today)\tok"))
     }
 }
