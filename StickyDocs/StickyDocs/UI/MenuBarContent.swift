@@ -56,6 +56,10 @@ struct MenuBarContent: View {
 
         Toggle("Receive Alpha Updates", isOn: $updater.alphaChannelEnabled)
 
+        Button("StickyDocs Tips") {
+            AppController.shared.showFeatureTour()
+        }
+
 #if DEBUG
         Divider()
 
@@ -104,6 +108,10 @@ struct StickyDocsCommands: Commands {
                 }
             }
             .keyboardShortcut("?", modifiers: .command)
+
+            Button("StickyDocs Tips") {
+                AppController.shared.showFeatureTour()
+            }
 
             Divider()
 

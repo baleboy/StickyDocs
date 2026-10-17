@@ -108,6 +108,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AppController.shared.presentOnboardingIfNeeded()
             try? AppController.shared.restoreOpenStickies()
             try? AppController.shared.createInitialStickyIfNeeded()
+            // Before the All Stickies panel, which waits for it to close.
+            AppController.shared.presentFeatureTourIfNeeded()
             AppController.shared.showAllStickiesIfNothingOpen()
             await AppController.shared.pullAllFromDrive()
             // Edits left pending by the last session (quit mid-debounce,

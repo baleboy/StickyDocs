@@ -12,7 +12,7 @@ on macOS.
 **Resetting to a first-run state.** The app is sandboxed, so its data lives in the container, *not* in `~/Library/Application Support`. A stale empty `~/Library/Application Support/StickyDocs/stickies.sqlite` may exist from pre-sandbox builds — deleting that one does nothing. Quit the app first (menu bar → Quit; a running app rewrites its state on exit), then:
 
 ```bash
-# Local state: stickies, onboarding flag, cached folder id, prefs, OAuth cookies
+# Local state: stickies, onboarding flag, cached folder id, prefs (incl. FeatureTour.seenVersion), OAuth cookies
 rm -rf ~/Library/Containers/com.baleware.StickyDocs
 # Refresh token (note the service is com.balenet, not com.baleware)
 security delete-generic-password -s "com.balenet.StickyDocs.GoogleOAuth" -a default
@@ -24,16 +24,32 @@ The onboarding gate is `onboarding_complete` in the DB's `app_state` table (`App
 
 **Gatekeeper first-open** is only exercised on a freshly *downloaded* DMG — the quarantine attribute is what triggers it. Testing a locally built or already-unquarantined copy skips that step entirely.
 
-- [ ] **Fresh install — intro appears.** Reset as above, then launch the app. An onboarding window appears titled "Welcome to StickyDocs" with three bullet points and a **Continue** button.
+- [ ] **Fresh install — intro appears.** Reset as above, then launch the app. An onboarding window appears titled "Welcome to StickyDocs" with two bullet points (what StickyDocs is, not how sync works) and a **Continue** button.
 - [ ] **Continue → sign-in step.** Click Continue. View flips to "Sign in with Google" with **Skip for now** and **Sign in with Google** buttons.
-- [ ] **Happy path — create new folder.** Click **Sign in with Google**, complete OAuth. View flips to "Choose your Stickies folder" with a text field pre-filled `Stickies`. Click **Finish**. Window closes. Open Drive — a folder named `Stickies` exists. Create a sticky and push — the Doc lands in `Stickies/`.
+- [ ] **Happy path — create new folder.** Click **Sign in with Google**, complete OAuth. View flips to "Choose your Stickies folder" with a text field pre-filled `Stickies`. Click **Finish**. The same window moves on to the feature tour (see 0b), starting with "You're all set". Open Drive — a folder named `Stickies` exists. Create a sticky and push — the Doc lands in `Stickies/`.
 - [ ] **Custom folder name.** Repeat fresh install. On the folder step, change name to e.g. `Notes`. Finish. Drive contains a `Notes/` folder; pushed Docs land there.
-- [ ] **Skip for now.** Fresh install. Continue → on sign-in step click **Skip for now**. Window closes. Menu bar: signed-out, **New Sticky** works (creates local-only sticky). No folder created in Drive. Relaunch: onboarding does NOT re-appear.
-- [ ] **Sign-in after skip → folder prompt.** After skipping, sign in via menu bar "Sign In with Google...". A folder-choice window appears (jumps straight to the folder step). Pick `Stickies` and Finish. First push lands in `Stickies/`.
-- [ ] **Close onboarding window mid-flow = skip.** Fresh install. Click the red close button on the intro window. Treated as skip: onboarding does NOT re-appear on relaunch; first push later auto-creates `Stickies/`.
+- [ ] **Skip for now.** Fresh install. Continue → on sign-in step click **Skip for now**. The window moves on to the feature tour; on the Google Docs page a line reads "Once you sign in from the menu bar icon:". Finish or skip the tour. Menu bar: signed-out, **New Sticky** works (creates local-only sticky). No folder created in Drive. Relaunch: onboarding does NOT re-appear.
+- [ ] **Sign-in after skip → folder prompt.** After skipping, sign in via menu bar "Sign In with Google...". A folder-choice window appears (jumps straight to the folder step). Pick `Stickies` and Finish. The window closes (no tour: it was already seen). First push lands in `Stickies/`.
+- [ ] **Close onboarding window mid-flow = skip.** Fresh install. Click the red close button on the intro window. Treated as skip: setup does NOT re-appear on relaunch, but the feature tour does, on its own (it was never seen); first push later auto-creates `Stickies/`.
 - [ ] **New Sticky before onboarding finishes.** Fresh install — onboarding window visible. Click menu bar **New Sticky** instead of completing onboarding. Behavior: brings the onboarding window forward (does NOT create a sticky).
-- [ ] **Reset re-triggers onboarding.** Complete onboarding. Run Debug → Reset All Local Data → relaunch. Onboarding window appears again. (The Debug submenu is `#if DEBUG` only — on an installed release build use the `rm -rf` reset above instead.)
+- [ ] **Reset re-triggers onboarding.** Complete onboarding. Run Debug → Reset All Local Data → relaunch. Onboarding window appears again; after the folder step it closes without the tour (the tour record lives in UserDefaults, which the reset doesn't touch). (The Debug submenu is `#if DEBUG` only — on an installed release build use the `rm -rf` reset above instead.)
 - [ ] **Empty folder name rejected.** On the folder step, clear the text field and click Finish. Error message appears; window stays.
+
+## 0b. Feature tour
+
+The tour is recorded per Mac in UserDefaults (`FeatureTour.seenVersion`), not in the DB. To see it again as a returning user: `defaults delete com.baleware.StickyDocs FeatureTour.seenVersion` with the app quit (sandboxed: the plist is in the container, so `rm -rf` of the container above resets it too).
+
+- [ ] **After setup.** Fresh install, sign in, Finish the folder step → the same window shows a big "You're all set" title, "A few things worth knowing", and three rows with coloured icons: **Closing isn't deleting**, **Dates in a keystroke**, **Watch the dot**. One page, so no page dots or Back/Skip links; a small "Reopen any time from StickyDocs Tips…" line above a wide button.
+- [ ] **Signed-out wording.** Skip sign-in → the tour's **Watch the dot** row starts "Once you sign in, …".
+- [ ] **Create my first sticky.** New account with no stickies: the button reads **Create My First Sticky**. Click it → the window closes and an empty sticky opens, focused, ready to type.
+- [ ] **Restored stickies → Done.** Fresh install with an account that already has stickies in Drive: after setup the button reads **Done** (it may switch once restored stickies arrive), and when the window closes the All Stickies panel opens (not over the tour).
+- [ ] **Esc.** Esc closes the tour, creates no sticky, and the tour doesn't come back on relaunch. Return presses the wide button.
+- [ ] **Existing user updating.** On a Mac that used a pre-tour build (setup already done, no `FeatureTour.seenVersion`): launch the new build → after restored stickies appear, the tour opens on its own titled "StickyDocs Tips", without setup steps, button **Done**. Relaunch → no tour.
+- [ ] **What's New.** With `defaults write com.baleware.StickyDocs FeatureTour.seenVersion -int 0` (app quit), launch → titled "What's New in StickyDocs", subtitle "Since you last updated", showing every tip added since (all three while the tour is at version 1).
+- [ ] **More than one page.** Only reachable once there are more than three tips (see the "What's New, page 2 of 2" preview in `OnboardingFlow.swift`): button reads **Continue** until the last page; Back · dots · Skip appear under it; ← → page; Skip is hidden on the last page.
+- [ ] **StickyDocs Tips.** Menu bar icon → **StickyDocs Tips**, and Help → **StickyDocs Tips** (with a sticky focused): the full tour opens, button **Done**. With setup on screen, the item just brings the setup window forward.
+- [ ] **Sign-out doesn't replay it.** Sign out (which wipes local data) and sign back in → setup runs again, the tour does not.
+- [ ] **Stickies stay usable.** While the tour is open, click a sticky behind it and type → works.
 
 ## 1. Auth
 

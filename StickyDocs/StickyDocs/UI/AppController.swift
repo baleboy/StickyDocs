@@ -222,6 +222,31 @@ final class AppController: ObservableObject {
         await syncNow()
     }
 
+    // Called when the setup / tour window closes, however it was closed.
+    // The All Stickies panel never opens over it, so a request deferred
+    // while it was up opens now.
+    func onboardingWindowClosed() {
+        guard pendingShowAllStickies, !onboarding.isShowing else { return }
+        pendingShowAllStickies = false
+        showAllStickiesPanel()
+    }
+
+    // MARK: - Feature tour
+
+    var hasAnyStickies: Bool { !((try? store.allActive()) ?? []).isEmpty }
+
+    // Existing users, at launch: the tour pages this Mac hasn't seen (all of
+    // them the first time). New users get them at the end of setup instead.
+    func presentFeatureTourIfNeeded() {
+        guard isOnboardingComplete, !onboarding.isShowing else { return }
+        onboarding.presentTour(allPages: false)
+    }
+
+    // StickyDocs Tips.
+    func showFeatureTour() {
+        onboarding.presentTour(allPages: true)
+    }
+
     var hasOpenStickyWindows: Bool { !windowControllers.isEmpty }
 
     func newSticky() throws -> Sticky {
