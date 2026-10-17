@@ -17,6 +17,12 @@ final class AppController: ObservableObject {
     // Sticky ids currently being pulled from Drive. UI observes this to show
     // a spinner in place of the status dot.
     @Published private(set) var syncingStickyIds: Set<String> = []
+    // Stickies whose text a background check just replaced with a remote
+    // edit. Shown with the same blue dot for a moment, so the change doesn't
+    // happen silently; checks that find nothing show nothing.
+    @Published private(set) var remotelyUpdatedStickyIds: Set<String> = []
+    private var remoteUpdateFlashes: [String: Task<Void, Never>] = [:]
+    static let remoteUpdateFlashDuration: Duration = .seconds(2)
     @Published private(set) var isOnboardingComplete: Bool = false
     // True while Sync Now (or the launch-time pull) is running.
     @Published private(set) var isSyncingAll = false
@@ -245,6 +251,7 @@ final class AppController: ObservableObject {
         do {
             let result = try await engine.pollRemoteChanges()
             let changed = result.pulled.filter { $0.value != .unchanged }
+            changed.keys.forEach(flashRemoteUpdate)
             if !changed.isEmpty || result.imported > 0 {
                 NSLog("[StickyDocs] poll: \(changed.count) sticky/stickies updated, \(result.imported) imported")
             }
@@ -262,13 +269,28 @@ final class AppController: ObservableObject {
            Date().timeIntervalSince(last) < Self.eventCheckMinInterval { return }
         lastFocusPullAt[stickyId] = Date()
         let engine = engine
-        Task { @MainActor in
+        Task { @MainActor [weak self] in
+            guard let self else { return }
             do {
                 let outcome = try await engine.pull(stickyId: stickyId)
-                if outcome != .unchanged { NSLog("[StickyDocs] focus pull \(outcome) for sticky \(stickyId)") }
+                if outcome != .unchanged {
+                    self.flashRemoteUpdate(stickyId: stickyId)
+                    NSLog("[StickyDocs] focus pull \(outcome) for sticky \(stickyId)")
+                }
             } catch {
                 NSLog("[StickyDocs] focus pull FAILED for sticky \(stickyId): \(error)")
             }
+        }
+    }
+
+    private func flashRemoteUpdate(stickyId: String) {
+        remoteUpdateFlashes[stickyId]?.cancel()
+        remotelyUpdatedStickyIds.insert(stickyId)
+        remoteUpdateFlashes[stickyId] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.remoteUpdateFlashDuration)
+            guard !Task.isCancelled, let self else { return }
+            self.remotelyUpdatedStickyIds.remove(stickyId)
+            self.remoteUpdateFlashes[stickyId] = nil
         }
     }
 

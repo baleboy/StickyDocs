@@ -88,7 +88,8 @@ struct StickyContentView: View {
             // the editor. .help() tooltips don't work reliably here because the
             // borderless window's resize tracking area covers every edge and
             // steals hover events.
-            if app.syncingStickyIds.contains(viewModel.sticky.id) {
+            if app.syncingStickyIds.contains(viewModel.sticky.id)
+                || app.remotelyUpdatedStickyIds.contains(viewModel.sticky.id) {
                 Circle()
                     .fill(Color.blue.opacity(0.55))
                     .frame(width: 5, height: 5)
