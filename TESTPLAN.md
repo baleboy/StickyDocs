@@ -103,6 +103,7 @@ The tour is recorded per Mac in UserDefaults (`FeatureTour.seenVersion`), not in
 - [ ] **Shortcut only at start of line.** Typing `a - b`, `see 1. above`, `2. two` or `10. ten` leaves plain text. Typing `- ` inside an existing list item doesn't nest or convert.
 - [ ] **Pasted markers stay text.** Paste a line beginning with `- ` → it stays plain text.
 - [ ] **Undo the shortcut.** Type `- ` then ⌘Z immediately → the literal `- ` comes back as plain text (one undo step).
+- [ ] **Nested items stay compact.** In a bulleted list, press Tab at the start of an item → it nests one level, its marker lined up under the parent item's text and the same short gap to its own text as the first level. Tab again nests another level the same way; Return continues at the current level; Shift-Tab moves back out.
 - [ ] **Return on an empty item ends the list.** In a list, press Return twice → the list ends and the new line is plain text.
 - [ ] **Backspace removes the bullet.** Cursor at the start of a list item's text, Backspace → the bullet/number is gone, the text stays as a plain paragraph.
 - [ ] **Shortcut lists sync like menu lists.** A list made with `- ` shows as a normal bulleted list in the Doc after blur, and the sticky goes pending (orange dot) right after the conversion.
