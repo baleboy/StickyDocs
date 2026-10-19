@@ -119,8 +119,12 @@ struct StickyEditorTests {
         typed.type("- a\nb")
         let loaded = EditorHarness(html: "<ul><li>a</li><li>b</li></ul>")
         #expect(typed.html == loaded.html)
+        // JSONEncoder's key order is unspecified, so equal requests can
+        // encode to different bytes unless the keys are sorted.
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
         let encode = { (tv: NSTextView) throws -> Data in
-            try JSONEncoder().encode(DocsBatchEncoder.encode(tv.textStorage!, currentBodyEndIndex: 2).requests)
+            try encoder.encode(DocsBatchEncoder.encode(tv.textStorage!, currentBodyEndIndex: 2).requests)
         }
         #expect(try encode(typed.textView) == encode(loaded.textView))
     }
