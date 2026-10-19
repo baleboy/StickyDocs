@@ -2,7 +2,7 @@ import Foundation
 import AppKit
 
 // Canonical HTML <-> NSAttributedString conversion for the supported feature set:
-// bold, italic, underline, bulleted list, numbered list, and http/https/mailto
+// bold, italic, underline, bulleted and numbered lists (nested too), and http/https/mailto
 // links.
 //
 // The serializer emits a minimal, deterministic HTML subset.
@@ -28,50 +28,63 @@ enum HTMLNormalizer {
         guard length > 0 else { return "" }
         let nsString = attributed.string as NSString
 
-        var paragraphs: [(text: NSAttributedString, list: ListKind)] = []
+        var html = ""
+        var items: [(path: [Bool], body: String)] = []
         nsString.enumerateSubstrings(
             in: NSRange(location: 0, length: length),
             options: .byParagraphs
         ) { _, paragraphRange, _, _ in
             let para = attributed.attributedSubstring(from: paragraphRange)
-            paragraphs.append((para, Self.listKind(of: para)))
-        }
-
-        var html = ""
-        var i = 0
-        while i < paragraphs.count {
-            let kind = paragraphs[i].list
-            switch kind {
-            case .none:
-                html += "<p>" + serializeInline(paragraphs[i].text) + "</p>"
-                i += 1
-            case .bullet, .number:
-                let tag = (kind == .bullet) ? "ul" : "ol"
-                html += "<\(tag)>"
-                while i < paragraphs.count && paragraphs[i].list == kind {
-                    let trimmed = trimLeadingMarker(paragraphs[i].text, kind: kind)
-                    html += "<li>" + serializeInline(trimmed) + "</li>"
-                    i += 1
-                }
-                html += "</\(tag)>"
+            if let path = Self.listPath(para) {
+                items.append((path, serializeInline(trimListMarker(para, ordered: path.last!))))
+            } else {
+                html += listHTML(items)
+                items = []
+                html += "<p>" + serializeInline(para) + "</p>"
             }
         }
+        return html + listHTML(items)
+    }
+
+    // Markup for a run of consecutive list items, each given by its path of
+    // list kinds (true = numbered), outermost first. An item one level deeper
+    // than the one before it opens a list inside that item, as <ul>/<ol>
+    // nest in HTML.
+    private static func listHTML(_ items: [(path: [Bool], body: String)]) -> String {
+        var html = ""
+        var open: [Bool] = []
+        func closeList() { html += "</li></\(open.removeLast() ? "ol" : "ul")>" }
+        for item in items {
+            var shared = 0
+            while shared < min(open.count, item.path.count), open[shared] == item.path[shared] { shared += 1 }
+            while open.count > shared { closeList() }
+            if shared == item.path.count {
+                html += "</li>"
+            } else {
+                for ordered in item.path[shared...] {
+                    html += ordered ? "<ol>" : "<ul>"
+                    open.append(ordered)
+                }
+            }
+            html += "<li>" + item.body
+        }
+        while !open.isEmpty { closeList() }
         return html
     }
 
-    private enum ListKind { case none, bullet, number }
+    static let numberedMarkerFormats: Set<NSTextList.MarkerFormat> = [
+        .decimal, .lowercaseAlpha, .uppercaseAlpha, .lowercaseLatin, .uppercaseLatin,
+        .lowercaseRoman, .uppercaseRoman, .lowercaseHexadecimal, .uppercaseHexadecimal, .octal
+    ]
 
-    private static func listKind(of paragraph: NSAttributedString) -> ListKind {
-        guard let ordered = isOrderedList(paragraph) else { return .none }
-        return ordered ? .number : .bullet
-    }
-
-    // nil when the paragraph isn't a list item; otherwise whether it's numbered.
+    // nil when the paragraph isn't a list item; otherwise whether each level
+    // of its list nesting is numbered, outermost first (a nested item made
+    // with Tab carries its parents' lists as well as its own).
     // `orderedKey` (stamped from the raw HTML scan) is authoritative for
     // imported content, whose marker format can't be trusted. Lists made in
     // the editor carry a numeric marker format instead, which also survives
     // NSTextView continuing the list onto a new item when Return is pressed.
-    static func isOrderedList(_ paragraph: NSAttributedString) -> Bool? {
+    static func listPath(_ paragraph: NSAttributedString) -> [Bool]? {
         guard paragraph.length > 0 else { return nil }
         let range = NSRange(location: 0, length: paragraph.length)
         var lists: [NSTextList]?
@@ -82,31 +95,34 @@ enum HTMLNormalizer {
             }
         }
         guard let lists else { return nil }
-        var ordered = lists.contains { $0.markerFormat == .decimal }
+        var stamped: [Bool] = []
         paragraph.enumerateAttribute(orderedKey, in: range) { value, _, stop in
-            if (value as? Bool) == true { ordered = true; stop.pointee = true }
+            if let path = value as? [Bool] { stamped = path; stop.pointee = true }
+            else if (value as? Bool) == true { stamped = [true]; stop.pointee = true }
         }
-        return ordered
+        return lists.indices.map { i in
+            i < stamped.count ? stamped[i] : numberedMarkerFormats.contains(lists[i].markerFormat)
+        }
+    }
+
+    // nil when the paragraph isn't a list item; otherwise whether the item
+    // itself (its innermost list) is numbered.
+    static func isOrderedList(_ paragraph: NSAttributedString) -> Bool? {
+        listPath(paragraph)?.last
     }
 
     // Apple's HTML parser includes the rendered list marker (e.g. "\t•\t" or
-    // "\t1.\t") as plain text inside each list-item paragraph. We must strip it
-    // before serializing, otherwise the next parse would render the marker
-    // again on top of the literal text, doubling it.
+    // "\t1.\t") as plain text inside each list-item paragraph, and the editor
+    // writes one the same way, at every nesting level ("\t⁃\t" for a nested
+    // bullet). We must strip it before serializing, otherwise the next parse
+    // would render the marker again on top of the literal text, doubling it.
     //
     // Google's HTML export uses CSS counters and does not include the marker
     // in the text, but does add leading whitespace for indentation. So the
-    // marker char is optional in the regex - the whitespace alone matches.
-    private static func trimLeadingMarker(_ paragraph: NSAttributedString, kind: ListKind) -> NSAttributedString {
-        let pattern: String
-        switch kind {
-        case .bullet:
-            pattern = #"^\s*([•⦁·▪◦◯●○■□*-]\s*)?"#
-        case .number:
-            pattern = #"^\s*(\d+[.)]?\s*)?"#
-        case .none:
-            return paragraph
-        }
+    // marker char is optional in the fallback - the whitespace alone matches.
+    static func trimListMarker(_ paragraph: NSAttributedString, ordered: Bool) -> NSAttributedString {
+        let marker = ordered ? #"\d+[.)]?"# : #"[•⦁·▪◦◯●○■□⁃‣*-]"#
+        let pattern = #"^\t[^\t\n]*\t\s*|^\s*("# + marker + #"\s*)?"#
         let text = paragraph.string as NSString
         guard let regex = try? NSRegularExpression(pattern: pattern),
               let match = regex.firstMatch(in: paragraph.string, range: NSRange(location: 0, length: text.length)),
@@ -229,14 +245,16 @@ enum HTMLNormalizer {
     // NSAttributedString's HTML parser loses the <ol>-vs-<ul> distinction when
     // the source uses CSS counters (as Google Drive's export does). We pre-scan
     // the raw HTML for <ol>/<ul>/<li> structure, then tag list-item paragraphs
-    // with this custom attribute after canonicalization.
+    // with this custom attribute after canonicalization. Its value is the
+    // item's path of list kinds as `[Bool]` (see `listPath`); the editor
+    // stamps a plain `true` on the numbered items it makes.
     static let orderedKey = NSAttributedString.Key("com.balenet.StickyDocs.ordered")
 
-    private static func scanListItemOrderedFlags(_ html: String) -> [Bool] {
+    private static func scanListItemOrderedPaths(_ html: String) -> [[Bool]] {
         var stack: [Bool] = []
-        var flags: [Bool] = []
+        var paths: [[Bool]] = []
         guard let regex = try? NSRegularExpression(pattern: #"<(/?)(ol|ul|li)[^>]*>"#, options: [.caseInsensitive]) else {
-            return flags
+            return paths
         }
         let ns = html as NSString
         for match in regex.matches(in: html, range: NSRange(location: 0, length: ns.length)) {
@@ -246,15 +264,77 @@ enum HTMLNormalizer {
             case ("ol", false): stack.append(true)
             case ("ul", false): stack.append(false)
             case ("ol", true), ("ul", true): _ = stack.popLast()
-            case ("li", false): flags.append(stack.last ?? false)
+            case ("li", false): paths.append(stack.isEmpty ? [false] : stack)
             default: break
             }
         }
-        return flags
+        return paths
+    }
+
+    // Drive's HTML export doesn't nest lists: every run of items at one
+    // level is its own top-level <ul>/<ol>, with the level only in a class
+    // ("lst-kix_<list id>-<level>") and the indent in CSS. Rebuild each run
+    // of adjacent such lists that has nested items as nested HTML, so the
+    // parser sees the structure `html(from:)` writes.
+    static func nestDocsExportLists(_ html: String) -> String {
+        guard html.contains("lst-kix_"),
+              let listRegex = try? NSRegularExpression(
+                pattern: #"<(ul|ol)\b[^>]*\blst-kix_\w+-(\d+)\b[^>]*>(.*?)</\1\s*>"#,
+                options: [.caseInsensitive, .dotMatchesLineSeparators]),
+              let itemRegex = try? NSRegularExpression(
+                pattern: #"<li\b[^>]*>(.*?)</li\s*>"#,
+                options: [.caseInsensitive, .dotMatchesLineSeparators])
+        else { return html }
+
+        let ns = html as NSString
+        var out = ""
+        var cursor = 0
+        var run: [(level: Int, ordered: Bool, body: String)] = []
+        var runSource = ""
+        func flush() {
+            if run.contains(where: { $0.level > 0 }) {
+                var items: [(path: [Bool], body: String)] = []
+                var path: [Bool] = []
+                for item in run {
+                    // A level's kind comes from the item before it at that
+                    // level, or from this item when it skips levels.
+                    path = Array(path.prefix(item.level))
+                    while path.count < item.level { path.append(item.ordered) }
+                    path.append(item.ordered)
+                    items.append((path, item.body))
+                }
+                out += listHTML(items)
+            } else {
+                out += runSource
+            }
+            run = []
+            runSource = ""
+        }
+        for match in listRegex.matches(in: html, range: NSRange(location: 0, length: ns.length)) {
+            let gap = ns.substring(with: NSRange(location: cursor, length: match.range.location - cursor))
+            if !gap.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                flush()
+                out += gap
+            } else {
+                runSource += gap
+            }
+            let ordered = ns.substring(with: match.range(at: 1)).lowercased() == "ol"
+            let level = Int(ns.substring(with: match.range(at: 2))) ?? 0
+            let inner = ns.substring(with: match.range(at: 3))
+            let innerNS = inner as NSString
+            for item in itemRegex.matches(in: inner, range: NSRange(location: 0, length: innerNS.length)) {
+                run.append((level, ordered, innerNS.substring(with: item.range(at: 1))))
+            }
+            runSource += ns.substring(with: match.range)
+            cursor = NSMaxRange(match.range)
+        }
+        flush()
+        return out + ns.substring(from: cursor)
     }
 
     @MainActor
     static func attributedString(from html: String) -> NSAttributedString {
+        let html = nestDocsExportLists(html)
         guard !html.isEmpty, let data = html.data(using: .utf8) else {
             return NSAttributedString(string: "")
         }
@@ -266,15 +346,15 @@ enum HTMLNormalizer {
             return NSAttributedString(string: "")
         }
         let canonical = canonicalize(raw)
-        let flags = scanListItemOrderedFlags(html)
-        return tagOrderedListItems(canonical, orderedFlags: flags)
+        let paths = scanListItemOrderedPaths(html)
+        return tagOrderedListItems(canonical, orderedPaths: paths)
     }
 
     // Walk paragraphs of the canonical attributed string. For each paragraph
     // that is a list item (has textLists set in its paragraphStyle), consume
-    // the next ordered flag and stamp the paragraph with `orderedKey` if true.
-    private static func tagOrderedListItems(_ attr: NSAttributedString, orderedFlags: [Bool]) -> NSAttributedString {
-        guard !orderedFlags.isEmpty else { return attr }
+    // the next path and stamp it as `orderedKey` if any level is numbered.
+    private static func tagOrderedListItems(_ attr: NSAttributedString, orderedPaths: [[Bool]]) -> NSAttributedString {
+        guard !orderedPaths.isEmpty else { return attr }
         let mutable = NSMutableAttributedString(attributedString: attr)
         let ns = mutable.string as NSString
         var flagIdx = 0
@@ -288,11 +368,11 @@ enum HTMLNormalizer {
                 }
             }
             guard hasList else { return }
-            guard flagIdx < orderedFlags.count else { return }
-            let ordered = orderedFlags[flagIdx]
+            guard flagIdx < orderedPaths.count else { return }
+            let path = orderedPaths[flagIdx]
             flagIdx += 1
-            if ordered {
-                mutable.addAttribute(orderedKey, value: true, range: paragraphRange)
+            if path.contains(true) {
+                mutable.addAttribute(orderedKey, value: path, range: paragraphRange)
             }
         }
         return mutable
@@ -301,9 +381,13 @@ enum HTMLNormalizer {
     private static func canonicalize(_ raw: NSAttributedString) -> NSAttributedString {
         let baseFont = NSFont.systemFont(ofSize: NSFont.systemFontSize)
         let result = NSMutableAttributedString()
-        // Imported bulleted lists get the editor's bullet glyph. One
-        // replacement per source list, so items stay in the same list.
+        // Imported bulleted lists get the editor's bullet glyphs: ours at the
+        // top level, and the hyphen NSTextView gives a list nested with Tab
+        // below it. One replacement per source list, so items stay in the
+        // same list.
         var bulletLists: [ObjectIdentifier: NSTextList] = [:]
+        let importedBullets: Set<NSTextList.MarkerFormat> = [.disc, .circle, .square]
+        let importedBulletMarkers: Set<String> = ["\t•\t", "\t◦\t", "\t▪\t", "\t■\t"]
         raw.enumerateAttributes(in: NSRange(location: 0, length: raw.length)) { attrs, range, _ in
             var text = (raw.string as NSString).substring(with: range)
             guard !text.isEmpty else { return }
@@ -335,15 +419,15 @@ enum HTMLNormalizer {
             if underlined { canonical[.underlineStyle] = 1 }
 
             if let style = attrs[.paragraphStyle] as? NSParagraphStyle, !style.textLists.isEmpty {
-                let lists = style.textLists.map { list -> NSTextList in
-                    guard list.markerFormat == .disc else { return list }
+                let lists = style.textLists.enumerated().map { level, list -> NSTextList in
+                    guard importedBullets.contains(list.markerFormat) else { return list }
                     if let replacement = bulletLists[ObjectIdentifier(list)] { return replacement }
-                    let replacement = NSTextList(markerFormat: bulletMarkerFormat, options: 0)
+                    let replacement = NSTextList(markerFormat: level == 0 ? bulletMarkerFormat : .hyphen, options: 0)
                     bulletLists[ObjectIdentifier(list)] = replacement
                     return replacement
                 }
-                if lists.first?.markerFormat == bulletMarkerFormat, text == "\t•\t" {
-                    text = "\t\(bulletMarkerFormat.rawValue)\t"
+                if let last = lists.last, last !== style.textLists.last, importedBulletMarkers.contains(text) {
+                    text = "\t\(last.marker(forItemNumber: 1))\t"
                 }
                 canonical[.paragraphStyle] = listParagraphStyle(lists)
             }

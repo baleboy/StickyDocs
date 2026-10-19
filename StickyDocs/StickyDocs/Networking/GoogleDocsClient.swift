@@ -269,7 +269,10 @@ enum DocsBatchEncoder {
                 link: run.link
             ))
         }
-        for bullet in walk.bulletRanges {
+        // Each createParagraphBullets turns its items' leading tabs into
+        // nesting levels and deletes them, shifting all text after it. Going
+        // from the end of the Doc keeps the ranges still to come valid.
+        for bullet in walk.bulletRanges.reversed() {
             requests.append(.createParagraphBullets(
                 DocsRange(startIndex: bullet.start, endIndex: bullet.end),
                 ordered: bullet.ordered
@@ -297,10 +300,16 @@ enum DocsBatchEncoder {
 
         ns.enumerateSubstrings(in: totalRange, options: .byParagraphs) { _, paragraphRange, _, _ in
             let paragraph = attributed.attributedSubstring(from: paragraphRange)
-            let kind = paragraphListKind(paragraph)
-            let body = (kind == .none) ? paragraph : trimLeadingMarker(paragraph, kind: kind)
+            let path = HTMLNormalizer.listPath(paragraph)
+            let body = path.map { HTMLNormalizer.trimListMarker(paragraph, ordered: $0.last!) } ?? paragraph
 
             let paragraphStartDocsIdx = docsIdx
+
+            // Docs takes a list item's nesting level from its leading tabs.
+            if let path, path.count > 1 {
+                plainText += String(repeating: "\t", count: path.count - 1)
+                docsIdx += path.count - 1
+            }
 
             // Walk inline attribute runs within this paragraph.
             let bodyNS = body.string as NSString
@@ -326,10 +335,10 @@ enum DocsBatchEncoder {
             docsIdx += 1
             let paragraphEndDocsIdx = docsIdx
 
-            // Bullet tracking.
-            let isOrdered = (kind == .number)
-            let isList = (kind != .none)
-            if isList {
+            // Bullet tracking. A Doc list has one preset for all its levels,
+            // so the outermost list's kind decides it.
+            let isOrdered = path?.first == true
+            if path != nil {
                 if pendingBulletStart == nil || pendingBulletOrdered != isOrdered {
                     if let s = pendingBulletStart, let o = pendingBulletOrdered {
                         bulletRanges.append(BulletRange(start: s, end: paragraphStartDocsIdx, ordered: o))
@@ -351,30 +360,6 @@ enum DocsBatchEncoder {
         }
 
         return Walk(plainText: plainText, styleRuns: styleRuns, bulletRanges: bulletRanges)
-    }
-
-    private enum ParagraphListKind { case none, bullet, number }
-
-    private static func paragraphListKind(_ paragraph: NSAttributedString) -> ParagraphListKind {
-        guard let ordered = HTMLNormalizer.isOrderedList(paragraph) else { return .none }
-        return ordered ? .number : .bullet
-    }
-
-    private static func trimLeadingMarker(_ paragraph: NSAttributedString, kind: ParagraphListKind) -> NSAttributedString {
-        let pattern: String
-        switch kind {
-        case .bullet: pattern = #"^\s*[•⦁·▪◦◯●○■□*-]\s*"#
-        case .number: pattern = #"^\s*\d+[.)]?\s*"#
-        case .none: return paragraph
-        }
-        let ns = paragraph.string as NSString
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: paragraph.string, range: NSRange(location: 0, length: ns.length)),
-              match.range.location == 0
-        else { return paragraph }
-        let start = match.range.upperBound
-        if start >= paragraph.length { return NSAttributedString(string: "") }
-        return paragraph.attributedSubstring(from: NSRange(location: start, length: paragraph.length - start))
     }
 
     private static func extractStyles(_ attrs: [NSAttributedString.Key: Any]) -> (bold: Bool, italic: Bool, underline: Bool, link: URL?) {

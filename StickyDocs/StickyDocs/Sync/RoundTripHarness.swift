@@ -68,6 +68,8 @@ struct RoundTripHarness {
         ("bullets", "<ul><li>one</li><li>two</li><li>three</li></ul>"),
         ("numbered", "<ol><li>first</li><li>second</li></ol>"),
         ("mixed", "<p>intro</p><ul><li>a</li><li>b</li></ul><p>end</p>"),
+        ("nested-bullets", "<ul><li>a<ul><li>b<ul><li>c</li></ul></li><li>d</li></ul></li><li>e</li></ul>"),
+        ("nested-numbered", "<p>intro</p><ol><li>one<ol><li>sub</li></ol></li><li>two</li></ol><p>end</p>"),
         ("link", "<p>see <a href=\"https://example.com/a?b=1&amp;c=2\">example</a> here</p>"),
         ("link-bold", "<p><a href=\"https://example.com\"><b>bold link</b></a></p>"),
         ("link-in-list", "<ul><li>go <a href=\"https://example.com\">https://example.com</a></li></ul>"),
