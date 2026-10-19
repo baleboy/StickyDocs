@@ -172,17 +172,20 @@ enum HTMLNormalizer {
     // "\t•\t" text, so with default 28pt tab stops the bullet sits at 28pt
     // and the text at 56pt. Tight stops plus a matching hanging indent keep
     // wrapped lines aligned with the text; numbered lists get a little more
-    // room so two-digit numbers fit. Display only: indents and tabs never
-    // reach the canonical HTML.
+    // room so two-digit numbers fit. A nested item (Tab in a list item, where
+    // AppKit's own style steps 36pt per level) starts its marker where its
+    // parent's text starts, so each level is as compact as the first.
+    // Display only: indents and tabs never reach the canonical HTML.
     static func listParagraphStyle(_ lists: [NSTextList]) -> NSParagraphStyle {
         let bulletFormats: Set<NSTextList.MarkerFormat> = [bulletMarkerFormat, .disc, .circle, .square, .hyphen]
-        let numbered = lists.contains { !bulletFormats.contains($0.markerFormat) }
-        let textStart: CGFloat = numbered ? 22 : 16
+        let widths = lists.map { CGFloat(bulletFormats.contains($0.markerFormat) ? 16 : 22) }
+        let base = widths.dropLast().reduce(0, +)
+        let textStart = base + (widths.last ?? 16)
         let style = NSMutableParagraphStyle()
         style.textLists = lists
-        style.tabStops = [NSTextTab(textAlignment: .natural, location: 4),
+        style.tabStops = [NSTextTab(textAlignment: .natural, location: base + 4),
                           NSTextTab(textAlignment: .natural, location: textStart)]
-        style.defaultTabInterval = textStart
+        style.defaultTabInterval = widths.last ?? 16
         style.headIndent = textStart
         return style
     }

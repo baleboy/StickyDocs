@@ -91,4 +91,22 @@ struct HTMLNormalizerTests {
         #expect(out.contains("10 &gt; 5"))
         #expect(out.contains("&amp;"))
     }
+
+    @Test func nestedListItemsIndentOneLevelAtATime() {
+        let outer = NSTextList(markerFormat: HTMLNormalizer.bulletMarkerFormat, options: 0)
+        let inner = NSTextList(markerFormat: .hyphen, options: 0)
+        let first = HTMLNormalizer.listParagraphStyle([outer])
+        let second = HTMLNormalizer.listParagraphStyle([outer, inner])
+        #expect(first.tabStops.map(\.location) == [4, 16])
+        #expect(first.headIndent == 16)
+        // The nested marker sits where the parent's text starts, with the
+        // same marker-to-text gap as the first level.
+        #expect(second.tabStops.map(\.location) == [20, 32])
+        #expect(second.headIndent == 32)
+
+        let numbered = NSTextList(markerFormat: .decimal, options: 0)
+        let underNumbered = HTMLNormalizer.listParagraphStyle([numbered, inner])
+        #expect(underNumbered.tabStops.map(\.location) == [26, 38])
+        #expect(underNumbered.headIndent == 38)
+    }
 }

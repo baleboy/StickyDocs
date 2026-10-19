@@ -585,8 +585,35 @@ final class StickyNSTextView: NSTextView {
                 linkEditCursor = NSMaxRange(region)
             }
         }
+        compactListIndents()
         super.didChangeText()
         updateDateHint()
+    }
+
+    // Tab and Shift-Tab in a list item nest and un-nest it with AppKit's own
+    // paragraph style, which indents each level by 36pt, and Return copies
+    // that style onto the next item. Restyle the list items around the
+    // cursor with the compact style the first level uses.
+    private func compactListIndents() {
+        guard let storage = textStorage else { return }
+        let ns = storage.string as NSString
+        let selection = selectedRange()
+        guard NSMaxRange(selection) <= ns.length else { return }
+        let paragraphs = ns.paragraphRange(for: selection)
+        var fixes: [(NSRange, NSParagraphStyle)] = []
+        storage.enumerateAttribute(.paragraphStyle, in: paragraphs) { value, range, _ in
+            guard let style = value as? NSParagraphStyle, !style.textLists.isEmpty else { return }
+            let compact = HTMLNormalizer.listParagraphStyle(style.textLists)
+            if style.headIndent != compact.headIndent || style.tabStops != compact.tabStops {
+                fixes.append((range, compact))
+            }
+        }
+        for (range, style) in fixes {
+            storage.addAttribute(.paragraphStyle, value: style, range: range)
+        }
+        if let style = typingAttributes[.paragraphStyle] as? NSParagraphStyle, !style.textLists.isEmpty {
+            typingAttributes[.paragraphStyle] = HTMLNormalizer.listParagraphStyle(style.textLists)
+        }
     }
 
     // Whether a link's visible text is just its URL, as for detected links.

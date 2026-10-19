@@ -62,6 +62,9 @@ struct StickyContentView: View {
                 let html = HTMLNormalizer.html(from: newAttributed)
                 try? viewModel.engine.updateContent(stickyId: viewModel.sticky.id, html: html)
             }
+            // Same margin as the sides (8pt inset + 5pt line padding), so the
+            // last line doesn't sit on the bottom edge.
+            .padding(.bottom, 13)
         }
         .background(Color(StickyColor.background(for: viewModel.sticky.color)))
         .background(
