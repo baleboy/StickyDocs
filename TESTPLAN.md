@@ -81,7 +81,7 @@ The tour is recorded per Mac in UserDefaults (`FeatureTour.seenVersion`), not in
 - [ ] **New sticky respects the setting.** With the toggle off, create a sticky (⇧⌘N). It appears but does **not** float above other apps.
 - [ ] **Setting persists.** With the toggle off, quit (⌘Q) and relaunch. Restored stickies come back non-floating and the menu item is still unticked.
 - [ ] **Across Spaces.** Switch to a different Space via Mission Control or trackpad. The sticky is still visible in the same screen position. Repeat with "Keep Stickies on Top" off — stickies still follow across Spaces.
-- [ ] **Drag to move.** Drag the sticky from anywhere in the top 16-pixel strip (above the text) or from a non-text area. The sticky moves smoothly. Frame persists across relaunch.
+- [ ] **Drag to move.** Drag the sticky from anywhere in the top 16-pixel strip (above the text), including the middle of the strip where the pointer is the normal arrow, not just the very top edge where it turns into a resize pointer. The sticky moves smoothly; the ✕ and trash buttons still click rather than drag. Frame persists across relaunch.
 - [ ] **Resize.** Drag the bottom-right corner. Frame persists across relaunch.
 - [ ] **Tiling doesn't stick.** Drag a sticky to the menu bar so macOS fills the screen with it, then quit and relaunch. The sticky comes back at its last hand-dragged size, not screen-sized.
 - [ ] **Close (✕) button = hide.** Hover over the sticky — a small ✕ appears top-left and a small trash icon top-right. Click ✕: window closes silently. Sticky still exists in All Stickies. Doc remains in Drive. Sticky does NOT auto-reopen on next launch (reopen via All Stickies → click row).

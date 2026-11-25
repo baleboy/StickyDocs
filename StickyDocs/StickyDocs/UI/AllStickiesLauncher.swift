@@ -447,7 +447,9 @@ struct LauncherView: View {
 }
 
 // Drags the window from empty background; controls on top take their own clicks.
-private struct WindowDragArea: View {
+// Also used for the sticky header strip (StickyContentView): AppKit's
+// isMovableByWindowBackground doesn't apply to a SwiftUI hosting view.
+struct WindowDragArea: View {
     var body: some View {
         Color.clear
             .contentShape(Rectangle())
