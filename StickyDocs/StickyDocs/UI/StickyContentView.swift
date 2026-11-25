@@ -15,6 +15,9 @@ struct StickyContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
+                // The whole strip moves the window; the buttons on top keep
+                // their own clicks.
+                WindowDragArea()
                 HStack(spacing: 3) {
                     ForEach(0..<3) { _ in
                         Circle()
